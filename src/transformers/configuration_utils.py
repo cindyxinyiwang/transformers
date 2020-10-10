@@ -84,6 +84,9 @@ class PretrainedConfig(object):
         self.label2id = kwargs.pop("label2id", dict(zip(self.id2label.values(), self.id2label.keys())))
         self.label2id = dict((key, int(value)) for key, value in self.label2id.items())
 
+        self.use_sde_embed = kwargs.pop("use_sde_embed", False)
+        self.max_ngram_size = kwargs.pop("max_ngram_size", 20)
+        self.sde_latent = kwargs.pop("sde_latent", 5000)
         # Additional attributes without default values
         for key, value in kwargs.items():
             try:
@@ -247,9 +250,11 @@ class PretrainedConfig(object):
         # Update config with kwargs if needed
         to_remove = []
         for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
-                to_remove.append(key)
+            #if hasattr(config, key):
+            #    setattr(config, key, value)
+            #    to_remove.append(key)
+            setattr(config, key, value)
+            to_remove.append(key)
         for key in to_remove:
             kwargs.pop(key, None)
 

@@ -27,7 +27,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from .configuration_bert import BertConfig
 from .file_utils import add_start_docstrings
 from .modeling_utils import PreTrainedModel, prune_linear_layer
-
+from .sde_embedding import SDE
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,12 @@ class BertEmbeddings(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+        self.use_sde_embed = config.use_sde_embed
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
+        if config.use_sde_embed:
+            assert config.pad_token_id == 0
+            self.sde_word_embeddings = SDE(config.vocab_size, config.hidden_size, pad_token_id=config.pad_token_id, 
+                                           cls_token_id=config.cls_token_id, sep_token_id=config.sep_token_id, unk_token_id=config.unk_token_id, char_emb=self.word_embeddings, latent=config.sde_latent)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
@@ -172,7 +177,10 @@ class BertEmbeddings(nn.Module):
 
     def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
-            input_shape = input_ids.size()
+            if self.use_sde_embed:
+                input_shape = input_ids.size()[:-1]
+            else:
+                input_shape = input_ids.size()
         else:
             input_shape = inputs_embeds.size()[:-1]
 
@@ -185,7 +193,10 @@ class BertEmbeddings(nn.Module):
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         if inputs_embeds is None:
-            inputs_embeds = self.word_embeddings(input_ids)
+            if self.use_sde_embed:
+                inputs_embeds = self.sde_word_embeddings(input_ids)
+            else:
+                inputs_embeds = self.word_embeddings(input_ids)
         position_embeddings = self.position_embeddings(position_ids)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 

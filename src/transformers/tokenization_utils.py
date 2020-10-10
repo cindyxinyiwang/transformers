@@ -832,6 +832,8 @@ class PreTrainedTokenizer(object):
         return_attention_mask=True,
         return_overflowing_tokens=False,
         return_special_tokens_mask=False,
+        sde=False,
+        max_ngram_size=20,
         **kwargs
     ):
         """
@@ -895,7 +897,10 @@ class PreTrainedTokenizer(object):
 
         def get_input_ids(text):
             if isinstance(text, str):
-                return self.convert_tokens_to_ids(self.tokenize(text, **kwargs))
+                if sde:
+                    return self.convert_tokens_to_sde_ids(self.ngram_tokenize(text, **kwargs), max_ngram_size=max_ngram_size)
+                else:
+                    return self.convert_tokens_to_ids(self.tokenize(text, **kwargs))
             elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], str):
                 return self.convert_tokens_to_ids(text)
             elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], int):
@@ -907,7 +912,6 @@ class PreTrainedTokenizer(object):
 
         first_ids = get_input_ids(text)
         second_ids = get_input_ids(text_pair) if text_pair is not None else None
-
         return self.prepare_for_model(
             first_ids,
             pair_ids=second_ids,
@@ -921,6 +925,8 @@ class PreTrainedTokenizer(object):
             return_token_type_ids=return_token_type_ids,
             return_overflowing_tokens=return_overflowing_tokens,
             return_special_tokens_mask=return_special_tokens_mask,
+            sde=sde,
+            max_ngram_size=max_ngram_size,
         )
 
     def batch_encode_plus(
@@ -1039,6 +1045,8 @@ class PreTrainedTokenizer(object):
         return_attention_mask=True,
         return_overflowing_tokens=False,
         return_special_tokens_mask=False,
+        sde=False,
+        max_ngram_size=20,
     ):
         """
         Prepares a sequence of input id, or a pair of sequences of inputs ids so that it can be used by the model.
@@ -1117,7 +1125,7 @@ class PreTrainedTokenizer(object):
 
         # Handle special_tokens
         if add_special_tokens:
-            sequence = self.build_inputs_with_special_tokens(ids, pair_ids)
+            sequence = self.build_inputs_with_special_tokens(ids, pair_ids, sde=sde, max_ngram_size=max_ngram_size)
             token_type_ids = self.create_token_type_ids_from_sequences(ids, pair_ids)
         else:
             sequence = ids + pair_ids if pair else ids
@@ -1169,7 +1177,10 @@ class PreTrainedTokenizer(object):
                     )
                 if return_special_tokens_mask:
                     encoded_inputs["special_tokens_mask"] = encoded_inputs["special_tokens_mask"] + [1] * difference
-                encoded_inputs["input_ids"] = encoded_inputs["input_ids"] + [self.pad_token_id] * difference
+                if sde:
+                    encoded_inputs["input_ids"] = encoded_inputs["input_ids"] + [[self.pad_token_id]*max_ngram_size] * difference
+                else:
+                    encoded_inputs["input_ids"] = encoded_inputs["input_ids"] + [self.pad_token_id] * difference
             elif self.padding_side == "left":
                 if return_attention_mask:
                     encoded_inputs["attention_mask"] = [0] * difference + [1] * len(encoded_inputs["input_ids"])
@@ -1179,7 +1190,10 @@ class PreTrainedTokenizer(object):
                     ]
                 if return_special_tokens_mask:
                     encoded_inputs["special_tokens_mask"] = [1] * difference + encoded_inputs["special_tokens_mask"]
-                encoded_inputs["input_ids"] = [self.pad_token_id] * difference + encoded_inputs["input_ids"]
+                if sde:
+                    encoded_inputs["input_ids"] = [[self.pad_token_id]*max_ngram_size] * difference + encoded_inputs["input_ids"]
+                else:
+                    encoded_inputs["input_ids"] = [self.pad_token_id] * difference + encoded_inputs["input_ids"]
 
             else:
                 raise ValueError("Invalid padding strategy:" + str(self.padding_side))
@@ -1211,7 +1225,6 @@ class PreTrainedTokenizer(object):
                     return_tensors
                 )
             )
-
         return encoded_inputs
 
     def truncate_sequences(
