@@ -149,6 +149,7 @@ if is_torch_available():
         BertForSequenceClassification,
         BertForMultipleChoice,
         BertForTokenClassification,
+        BertForMLMandTokenClassification,
         BertForQuestionAnswering,
         load_tf_weights_in_bert,
         BERT_PRETRAINED_MODEL_ARCHIVE_MAP,
@@ -353,7 +354,6 @@ if is_tf_available():
         TFDistilBertForMaskedLM,
         TFDistilBertForSequenceClassification,
         TFDistilBertForTokenClassification,
-        TFDistilBertForMLMandTokenClassification,
         TFDistilBertForQuestionAnswering,
         TF_DISTILBERT_PRETRAINED_MODEL_ARCHIVE_MAP,
     )
