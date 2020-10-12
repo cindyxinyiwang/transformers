@@ -353,6 +353,7 @@ if is_tf_available():
         TFDistilBertForMaskedLM,
         TFDistilBertForSequenceClassification,
         TFDistilBertForTokenClassification,
+        TFDistilBertForMLMandTokenClassification,
         TFDistilBertForQuestionAnswering,
         TF_DISTILBERT_PRETRAINED_MODEL_ARCHIVE_MAP,
     )
