@@ -19,6 +19,7 @@ import collections
 import logging
 import os
 import unicodedata
+import random
 
 import tokenizers as tk
 
@@ -193,14 +194,14 @@ class BertTokenizer(PreTrainedTokenizer):
     def vocab_size(self):
         return len(self.vocab)
 
-    def _tokenize(self, text):
+    def _tokenize(self, text, **kwargs):
         split_tokens = []
         if self.do_basic_tokenize:
             for token in self.basic_tokenizer.tokenize(text, never_split=self.all_special_tokens):
-                for sub_token in self.wordpiece_tokenizer.tokenize(token):
+                for sub_token in self.wordpiece_tokenizer.tokenize(token, **kwargs):
                     split_tokens.append(sub_token)
         else:
-            split_tokens = self.wordpiece_tokenizer.tokenize(text)
+            split_tokens = self.wordpiece_tokenizer.tokenize(text, **kwargs)
         return split_tokens
 
     def ngram_tokenize(self, text):
@@ -467,7 +468,7 @@ class WordpieceTokenizer(object):
         self.unk_token = unk_token
         self.max_input_chars_per_word = max_input_chars_per_word
 
-    def tokenize(self, text):
+    def tokenize(self, text, **kwargs):
         """Tokenizes a piece of text into its word pieces.
 
         This uses a greedy longest-match-first algorithm to perform tokenization
@@ -484,6 +485,8 @@ class WordpieceTokenizer(object):
         Returns:
           A list of wordpiece tokens.
         """
+        dropout = kwargs.get("dropout", 0)
+        assert 0 <= dropout <= 1
 
         output_tokens = []
         for token in whitespace_tokenize(text):
@@ -491,7 +494,10 @@ class WordpieceTokenizer(object):
             if len(chars) > self.max_input_chars_per_word:
                 output_tokens.append(self.unk_token)
                 continue
-
+            if dropout == 1:
+                output_tokens.append(chars[0])
+                output_tokens.extend("##{}".format(char) for char in chars[1:])
+                continue
             is_bad = False
             start = 0
             sub_tokens = []
@@ -502,7 +508,7 @@ class WordpieceTokenizer(object):
                     substr = "".join(chars[start:end])
                     if start > 0:
                         substr = "##" + substr
-                    if substr in self.vocab:
+                    if substr in self.vocab and random.random() >= dropout:
                         cur_substr = substr
                         break
                     end -= 1
