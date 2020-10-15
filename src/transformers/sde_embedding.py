@@ -55,9 +55,11 @@ class CharacterNgramEmbedder(torch.nn.Module):
     ):
         # BTC
         char_embs = self.char_embeddings(char_idxs)
+        pad_mask = char_idxs.eq(self.pad_token_id)
+        char_embs[pad_mask] = 0.
         # BC
         x = char_embs.sum(dim=1)
-        non_pad_mask = 1-char_idxs.eq(self.pad_token_id).int()
+        non_pad_mask = 1-pad_mask.int()
         char_counts = torch.clamp(non_pad_mask.sum(dim=-1), min=1)
         x = x/char_counts.unsqueeze(-1)
 
@@ -92,7 +94,7 @@ class SDE(nn.Module):
         # build current iteration weight matrix
         # BOW
         ngram_weight = self.char_ngram_embedder(x)  # N_ng * dim
-        ngram_weight = torch.tanh(ngram_weight).clone()
+        ngram_weight = torch.tanh(ngram_weight)
 
         # lang specific
         lang_emb = ngram_weight
@@ -134,7 +136,7 @@ class SDE(nn.Module):
 class precalcSDE(nn.Module):
     def __init__(self, dictionary, pairs=None, ngram_pool_mode='sum', n=4, threshold=32000, dim=128, latent=10000,
                  do_layer_norm=False):
-        super(SDE, self).__init__()
+        super(precalcSDE, self).__init__()
         self.padding_idx = dictionary.pad_index
         self.embedding_dim = dim
         word_vocab = dictionary.symbols[dictionary.nspecial:]

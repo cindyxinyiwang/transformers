@@ -88,6 +88,7 @@ class PretrainedConfig(object):
         self.max_ngram_size = kwargs.pop("max_ngram_size", 20)
         self.sde_latent = kwargs.pop("sde_latent", 5000)
         self.attention_t = kwargs.pop("attention_t", 1)
+
         # Additional attributes without default values
         for key, value in kwargs.items():
             try:
