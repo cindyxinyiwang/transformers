@@ -1335,6 +1335,10 @@ class BertForTokenClassification(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         self.init_weights()
+        if config.fix_class:
+            self.classifier.requires_grad = False
+            weight = self.classifier.weight
+            self.classifier.weight = nn.Parameter(weight/torch.norm(weight, dim=0))
 
     def forward(
         self,
@@ -1375,13 +1379,15 @@ class BertForTokenClassification(BertPreTrainedModel):
                 active_labels = labels.view(-1)[active_loss]
                 loss = loss_fct(active_logits, active_labels)
                 kept_labels = ~active_labels.eq(loss_fct.ignore_index)
+                logits = active_logits
             else:
                 if extra_mask is not None:
                     logits = logits.view(-1, self.num_labels)[extra_mask]
                     labels = labels.view(-1)[extra_mask]
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
                 kept_labels = ~labels.eq(loss_fct.ignore_index)
-            outputs = (loss,) + outputs + (kept_labels,)
+                logits = logits.view(-1, self.num_labels)
+            outputs = (loss,) + outputs + (kept_labels, logits)
 
         return outputs  # (loss), scores, (hidden_states), (attentions)
 
