@@ -589,6 +589,8 @@ class RobertaForTokenClassification(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        reduction='mean',
+        extra_mask=None,
     ):
 
         outputs = self.roberta(
@@ -607,18 +609,28 @@ class RobertaForTokenClassification(BertPreTrainedModel):
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
+            loss_fct = CrossEntropyLoss(reduction=reduction)
             # Only keep active parts of the loss
             if attention_mask is not None:
                 active_loss = attention_mask.view(-1) == 1
+                if extra_mask is not None:
+                    active_loss = active_loss&extra_mask
                 active_logits = logits.view(-1, self.num_labels)[active_loss]
                 active_labels = labels.view(-1)[active_loss]
                 loss = loss_fct(active_logits, active_labels)
+                kept_labels = ~active_labels.eq(loss_fct.ignore_index)
+                logits = active_logits
             else:
+                if extra_mask is not None:
+                    logits = logits.view(-1, self.num_labels)[extra_mask]
+                    labels = labels.view(-1)[extra_mask]
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            outputs = (loss,) + outputs
+                kept_labels = ~labels.eq(loss_fct.ignore_index)
+                logits = logits.view(-1, self.num_labels)
+            outputs = (loss,) + outputs + (kept_labels, logits)
 
         return outputs  # (loss), scores, (hidden_states), (attentions)
+
 
 
 class RobertaClassificationHead(nn.Module):
