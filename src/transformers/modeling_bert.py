@@ -1634,6 +1634,8 @@ class BertForQuestionAnswering(BertPreTrainedModel):
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2
-            outputs = (total_loss,) + outputs
+            #outputs = (total_loss,) + outputs
+            #print(logits.size())
+            outputs = (total_loss,) + outputs + (start_logits, end_logits)
 
         return outputs  # (loss), start_logits, end_logits, (hidden_states), (attentions)
