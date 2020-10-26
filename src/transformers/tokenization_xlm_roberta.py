@@ -172,9 +172,9 @@ class XLMRobertaTokenizer(PreTrainedTokenizer):
         assert 0 <= dropout <= 1
 
         if dropout == 0:
-            return self.sp_model.SampleEncodeAsPieces(text, -1, dropout)
-        else:
             return self.sp_model.EncodeAsPieces(text)
+        else:
+            return self.sp_model.SampleEncodeAsPieces(text, -1, dropout)
 
     def _convert_token_to_id(self, token):
         """ Converts a token (str) in an id using the vocab. """
