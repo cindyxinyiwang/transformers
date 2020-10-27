@@ -1125,7 +1125,8 @@ class PreTrainedTokenizer(object):
 
         # Handle special_tokens
         if add_special_tokens:
-            sequence = self.build_inputs_with_special_tokens(ids, pair_ids, sde=sde, max_ngram_size=max_ngram_size)
+            #sequence = self.build_inputs_with_special_tokens(ids, pair_ids, sde=sde, max_ngram_size=max_ngram_size)
+            sequence = self.build_inputs_with_special_tokens(ids, pair_ids)
             token_type_ids = self.create_token_type_ids_from_sequences(ids, pair_ids)
         else:
             sequence = ids + pair_ids if pair else ids
