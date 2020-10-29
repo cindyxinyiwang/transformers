@@ -382,6 +382,7 @@ def compute_predictions_logits(
     version_2_with_negative,
     null_score_diff_threshold,
     tokenizer,
+    do_final_text=True,
 ):
     """Write final predictions to the json file and log-odds of null if needed."""
     logger.info("Writing predictions to: %s" % (output_prediction_file))
@@ -493,8 +494,10 @@ def compute_predictions_logits(
                 tok_text = tok_text.strip()
                 tok_text = " ".join(tok_text.split())
                 orig_text = " ".join(orig_tokens)
-
-                final_text = get_final_text(tok_text, orig_text, do_lower_case, verbose_logging)
+                if do_final_text:
+                    final_text = get_final_text(tok_text, orig_text, do_lower_case, verbose_logging)
+                else:
+                    final_text = tok_text
                 if final_text in seen_predictions:
                     continue
 
