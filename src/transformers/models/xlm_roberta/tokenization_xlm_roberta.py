@@ -247,8 +247,12 @@ class XLMRobertaTokenizer(PreTrainedTokenizer):
         vocab.update(self.added_tokens_encoder)
         return vocab
 
-    def _tokenize(self, text):
-        return self.sp_model.EncodeAsPieces(text)
+    def _tokenize(self, text, **kwargs):
+        dropout = kwargs.get("dropout", 0)
+        if dropout == 0:
+            return self.sp_model.EncodeAsPieces(text)
+        else:
+            return self.sp_model.SampleEncodeAsPieces(text, -1, dropout)
 
     def _convert_token_to_id(self, token):
         """ Converts a token (str) in an id using the vocab. """
