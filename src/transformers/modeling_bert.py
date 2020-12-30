@@ -174,8 +174,9 @@ class BertEmbeddings(nn.Module):
         # any TensorFlow checkpoint file
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dp_prob = config.hidden_dropout_prob
 
-    def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None):
+    def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None, dp_masks=None):
         if input_ids is not None:
             if self.use_sde_embed:
                 input_shape = input_ids.size()[:-1]
@@ -202,8 +203,17 @@ class BertEmbeddings(nn.Module):
 
         embeddings = inputs_embeds + position_embeddings + token_type_embeddings
         embeddings = self.LayerNorm(embeddings)
+        #if self.training and self.dp_prob > 0:
+        #    if dp_masks is None:
+        #        mask1 = torch.zeros_like(embeddings).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
+        #    else:
+        #        mask1 = dp_masks
+        #    embeddings = embeddings * mask1
+        #else:
+        #    mask1 = None
+        mask1 = None
         embeddings = self.dropout(embeddings)
-        return embeddings
+        return embeddings, mask1
 
 
 class BertSelfAttention(nn.Module):
@@ -225,6 +235,7 @@ class BertSelfAttention(nn.Module):
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.dp_prob = config.attention_probs_dropout_prob
         self.attention_t = config.attention_t
 
     def transpose_for_scores(self, x):
@@ -239,6 +250,7 @@ class BertSelfAttention(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        dp_mask = None
     ):
         mixed_query_layer = self.query(hidden_states)
 
@@ -269,6 +281,15 @@ class BertSelfAttention(nn.Module):
 
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
+        #if self.training and self.dp_prob > 0:
+        #    if dp_mask is None:
+        #        mask = torch.zeros_like(attention_probs).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
+        #    else:
+        #        mask = dp_mask
+        #    attention_probs = attention_probs * mask 
+        #else:
+        #    mask = None
+        mask = None
         attention_probs = self.dropout(attention_probs)
 
         # Mask heads if we want to
@@ -282,7 +303,7 @@ class BertSelfAttention(nn.Module):
         context_layer = context_layer.view(*new_context_layer_shape)
 
         outputs = (context_layer, attention_probs) if self.output_attentions else (context_layer,)
-        return outputs
+        return outputs, mask
 
 
 class BertSelfOutput(nn.Module):
@@ -291,12 +312,22 @@ class BertSelfOutput(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dp_prob = config.hidden_dropout_prob
 
-    def forward(self, hidden_states, input_tensor):
+    def forward(self, hidden_states, input_tensor, dp_mask=None):
         hidden_states = self.dense(hidden_states)
+        #if self.training and self.dp_prob > 0:
+        #    if dp_mask is None:
+        #        mask = torch.zeros_like(hidden_states).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
+        #    else:
+        #        mask = dp_mask
+        #    hidden_states = hidden_states * mask
+        #else:
+        #    mask = None
+        mask = None
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        return hidden_states
+        return hidden_states, mask
 
 
 class BertAttention(nn.Module):
@@ -336,13 +367,14 @@ class BertAttention(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        dp_masks=None
     ):
-        self_outputs = self.self(
-            hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask
+        self_outputs, attn_dp_masks = self.self(
+            hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask, dp_mask=(dp_masks[0] if dp_masks is not None else None)
         )
-        attention_output = self.output(self_outputs[0], hidden_states)
+        attention_output, out_dp_masks = self.output(self_outputs[0], hidden_states, dp_mask=(dp_masks[1] if dp_masks is not None else None))
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
-        return outputs
+        return outputs, [attn_dp_masks, out_dp_masks]
 
 
 class BertIntermediate(nn.Module):
@@ -366,12 +398,22 @@ class BertOutput(nn.Module):
         self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dp_prob = config.hidden_dropout_prob
 
-    def forward(self, hidden_states, input_tensor):
+    def forward(self, hidden_states, input_tensor, dp_mask=None):
         hidden_states = self.dense(hidden_states)
+        #if self.training and self.dp_prob > 0:
+        #    if dp_mask is None:
+        #        mask = torch.zeros_like(hidden_states).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
+        #    else:
+        #        mask = dp_mask
+        #    hidden_states = hidden_states * mask
+        #else:
+        #    mask = None
+        mask = None
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        return hidden_states
+        return hidden_states, mask
 
 
 class BertLayer(nn.Module):
@@ -391,8 +433,9 @@ class BertLayer(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        dp_masks=None,
     ):
-        self_attention_outputs = self.attention(hidden_states, attention_mask, head_mask)
+        self_attention_outputs, attn_dp_masks = self.attention(hidden_states, attention_mask, head_mask, dp_masks=(dp_masks[0] if dp_masks is not None else None))
         attention_output = self_attention_outputs[0]
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
@@ -404,9 +447,9 @@ class BertLayer(nn.Module):
             outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
 
         intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output)
+        layer_output, output_dp_masks = self.output(intermediate_output, attention_output, dp_masks[1] if dp_masks is not None else None)
         outputs = (layer_output,) + outputs
-        return outputs
+        return outputs, [attn_dp_masks, output_dp_masks] 
 
 
 class BertEncoder(nn.Module):
@@ -423,21 +466,24 @@ class BertEncoder(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        dp_masks=None,
     ):
         all_hidden_states = ()
         all_attentions = ()
+        ret_dp_masks = []
         for i, layer_module in enumerate(self.layer):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_outputs = layer_module(
-                hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask
+            layer_outputs, layer_dp_mask = layer_module(
+                hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask, dp_masks[i] if dp_masks is not None else None
             )
             hidden_states = layer_outputs[0]
 
             if self.output_attentions:
                 all_attentions = all_attentions + (layer_outputs[1],)
 
+            ret_dp_masks.append(layer_dp_mask)
         # Add last layer
         if self.output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -447,7 +493,7 @@ class BertEncoder(nn.Module):
             outputs = outputs + (all_hidden_states,)
         if self.output_attentions:
             outputs = outputs + (all_attentions,)
-        return outputs  # last-layer hidden state, (all hidden states), (all attentions)
+        return outputs, ret_dp_masks  # last-layer hidden state, (all hidden states), (all attentions)
 
 
 class BertPooler(nn.Module):
@@ -703,6 +749,7 @@ class BertModel(BertPreTrainedModel):
         inputs_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        dp_masks=None,
     ):
         """ Forward pass on the Model.
 
@@ -813,15 +860,16 @@ class BertModel(BertPreTrainedModel):
         else:
             head_mask = [None] * self.config.num_hidden_layers
 
-        embedding_output = self.embeddings(
-            input_ids=input_ids, position_ids=position_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds
+        embedding_output, emb_dp_mask = self.embeddings(
+            input_ids=input_ids, position_ids=position_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds, dp_masks=dp_masks[0] if dp_masks is not None else None
         )
-        encoder_outputs = self.encoder(
+        encoder_outputs, encoder_dp_mask = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
             head_mask=head_mask,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
+            dp_masks=dp_masks[1] if dp_masks is not None else None,
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)
@@ -829,8 +877,8 @@ class BertModel(BertPreTrainedModel):
         outputs = (sequence_output, pooled_output,) + encoder_outputs[
             1:
         ]  # add hidden_states and attentions if they are here
-        return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
-
+        #return outputs, [emb_dp_mask, encoder_dp_mask] # sequence_output, pooled_output, (hidden_states), (attentions)
+        return outputs
 
 @add_start_docstrings(
     """Bert Model with two heads on top as done during the pre-training:
@@ -1335,6 +1383,7 @@ class BertForTokenClassification(BertPreTrainedModel):
 
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.dp_prob = config.hidden_dropout_prob
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         self.init_weights()
@@ -1354,6 +1403,7 @@ class BertForTokenClassification(BertPreTrainedModel):
         labels=None,
         reduction='mean',
         extra_mask=None,
+        dp_masks=None,
     ):
 
         outputs = self.bert(
@@ -1363,11 +1413,20 @@ class BertForTokenClassification(BertPreTrainedModel):
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
+            dp_masks=dp_masks[0] if dp_masks is not None else None,
         )
 
         sequence_output = outputs[0]
 
         sequence_output = self.dropout(sequence_output)
+        #if self.training and self.dp_prob > 0:
+        #    if dp_masks is None:
+        #        out_mask = torch.zeros_like(sequence_output).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
+        #    else:
+        #        out_mask = dp_masks[1]
+        #    sequence_output = sequence_output * out_mask
+        #else:
+        #    out_mask = None
         logits = self.classifier(sequence_output)
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
@@ -1391,8 +1450,11 @@ class BertForTokenClassification(BertPreTrainedModel):
                 kept_labels = ~labels.eq(loss_fct.ignore_index)
                 logits = logits.view(-1, self.num_labels)
             outputs = (loss,) + outputs + (kept_labels, logits)
-
-        return outputs  # (loss), scores, (hidden_states), (attentions)
+        #if self.training:
+        #    return outputs, [bert_dp_masks, out_mask]  # (loss), scores, (hidden_states), (attentions)
+        #else:
+        #    return outputs
+        return outputs
 
 class BertForMLMandTokenClassification(BertPreTrainedModel):
     r"""
@@ -1450,6 +1512,7 @@ class BertForMLMandTokenClassification(BertPreTrainedModel):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         lm_labels=None,
+        dp_masks=None,
     ):
 
         outputs = self.bert(
@@ -1500,6 +1563,7 @@ class BertForMLMandTokenClassification(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        dp_masks=None,
     ):
 
         outputs = self.bert(
