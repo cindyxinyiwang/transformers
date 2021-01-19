@@ -1404,6 +1404,7 @@ class BertForTokenClassification(BertPreTrainedModel):
         reduction='mean',
         extra_mask=None,
         dp_masks=None,
+        noise=0,
     ):
 
         outputs = self.bert(
@@ -1418,6 +1419,11 @@ class BertForTokenClassification(BertPreTrainedModel):
 
         sequence_output = outputs[0]
 
+        if noise > 0:
+            noised = torch.zeros_like(sequence_output).normal_(0, 1) * noise * noise
+            noised.to(sequence_output.device)
+            sequence_output = sequence_output + noised
+
         sequence_output = self.dropout(sequence_output)
         #if self.training and self.dp_prob > 0:
         #    if dp_masks is None:
@@ -1427,6 +1433,7 @@ class BertForTokenClassification(BertPreTrainedModel):
         #    sequence_output = sequence_output * out_mask
         #else:
         #    out_mask = None
+
         logits = self.classifier(sequence_output)
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
@@ -1564,6 +1571,7 @@ class BertForMLMandTokenClassification(BertPreTrainedModel):
         inputs_embeds=None,
         labels=None,
         dp_masks=None,
+        noise=0,
     ):
 
         outputs = self.bert(
@@ -1576,6 +1584,11 @@ class BertForMLMandTokenClassification(BertPreTrainedModel):
         )
 
         sequence_output = outputs[0]
+
+        if noise > 0:
+            noised = torch.zeros_like(sequence_output).normal_(0, 1) * noise * noise
+            noised.to(sequence_output.device)
+            sequence_output = sequence_output + noised
 
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
