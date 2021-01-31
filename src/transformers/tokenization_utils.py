@@ -909,7 +909,6 @@ class PreTrainedTokenizer(object):
                 raise ValueError(
                     "Input is not valid. Should be a string, a list/tuple of strings or a list/tuple of integers."
                 )
-
         first_ids = get_input_ids(text)
         second_ids = get_input_ids(text_pair) if text_pair is not None else None
         return self.prepare_for_model(

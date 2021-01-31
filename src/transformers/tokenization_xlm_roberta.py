@@ -14,7 +14,7 @@
 # limitations under the License
 """ Tokenization classes for XLM-RoBERTa model."""
 
-
+import random
 import logging
 import os
 from shutil import copyfile
@@ -169,7 +169,11 @@ class XLMRobertaTokenizer(PreTrainedTokenizer):
 
     def _tokenize(self, text, **kwargs):
         dropout = kwargs.get("dropout", 0)
+        sample_bpe_dropout = kwargs.get("sample_bpe_dropout", 0)
+        sample_bpe_dropout_low = kwargs.get("sample_bpe_dropout_low", 0)
         assert 0 <= dropout <= 1
+        if sample_bpe_dropout > 0:
+            dropout = random.uniform(sample_bpe_dropout_low, sample_bpe_dropout)
 
         if dropout == 0:
             return self.sp_model.EncodeAsPieces(text)

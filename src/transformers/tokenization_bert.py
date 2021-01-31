@@ -486,10 +486,14 @@ class WordpieceTokenizer(object):
           A list of wordpiece tokens.
         """
         dropout = kwargs.get("dropout", 0)
+        sample_bpe_dropout = kwargs.get("sample_bpe_dropout", 0)
         assert 0 <= dropout <= 1
-
+        #print(sample_bpe_dropout)
+        #print(dropout)
         output_tokens = []
         for token in whitespace_tokenize(text):
+            if sample_bpe_dropout > 0:
+                dropout = random.random(0, sample_bpe_dropout)
             chars = list(token)
             if len(chars) > self.max_input_chars_per_word:
                 output_tokens.append(self.unk_token)
@@ -508,9 +512,10 @@ class WordpieceTokenizer(object):
                     substr = "".join(chars[start:end])
                     if start > 0:
                         substr = "##" + substr
-                    if substr in self.vocab and random.random() >= dropout:
-                        cur_substr = substr
-                        break
+                    if substr in self.vocab:
+                        if random.random() >= dropout or start == (end+1):
+                            cur_substr = substr
+                            break
                     end -= 1
                 if cur_substr is None:
                     is_bad = True
