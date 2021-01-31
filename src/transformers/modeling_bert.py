@@ -1405,6 +1405,8 @@ class BertForTokenClassification(BertPreTrainedModel):
         extra_mask=None,
         dp_masks=None,
         noise=0,
+        return_seq_out=False,
+        mix_seq_out=None,
     ):
 
         outputs = self.bert(
@@ -1425,6 +1427,10 @@ class BertForTokenClassification(BertPreTrainedModel):
             sequence_output = sequence_output + noised
 
         sequence_output = self.dropout(sequence_output)
+        if return_seq_out:
+            return sequence_output
+        if mix_seq_out is not None:
+            sequence_output = 0.5*mix_seq_out + 0.5*sequence_output
         #if self.training and self.dp_prob > 0:
         #    if dp_masks is None:
         #        out_mask = torch.zeros_like(sequence_output).bernoulli_(1 - self.dp_prob) / (1 - self.dp_prob)
