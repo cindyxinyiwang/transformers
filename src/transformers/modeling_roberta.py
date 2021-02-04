@@ -377,6 +377,7 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        reduction="mean",
     ):
         outputs = self.roberta(
             input_ids,
@@ -393,10 +394,10 @@ class RobertaForSequenceClassification(BertPreTrainedModel):
         if labels is not None:
             if self.num_labels == 1:
                 #  We are doing regression
-                loss_fct = MSELoss()
+                loss_fct = MSELoss(reduction=reduction)
                 loss = loss_fct(logits.view(-1), labels.view(-1))
             else:
-                loss_fct = CrossEntropyLoss()
+                loss_fct = CrossEntropyLoss(reduction=reduction)
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             outputs = (loss,) + outputs
 
