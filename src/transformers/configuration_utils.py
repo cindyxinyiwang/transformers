@@ -90,6 +90,11 @@ class PretrainedConfig(object):
         self.attention_t = kwargs.pop("attention_t", 1)
         self.fix_class = kwargs.pop("fix_class", False)
 
+        self.word_max_norm = kwargs.pop("word_max_norm", None)
+        self.word_norm_type = kwargs.pop("word_norm_type", 2.)
+
+        self.adapter = kwargs.pop("adapter", False)
+        self.down_sample = kwargs.pop("down_sample", 2)
         # Additional attributes without default values
         for key, value in kwargs.items():
             try:

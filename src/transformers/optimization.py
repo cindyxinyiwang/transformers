@@ -116,6 +116,59 @@ class AdamW(Optimizer):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, correct_bias=correct_bias)
         super().__init__(params, defaults)
 
+    def record_param(self):
+        for group in self.param_groups:
+            for p in group["params"]:
+                #if p.grad is None:
+                #    continue
+                #grad = p.grad.data
+                #if grad.is_sparse:
+                #    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+
+                state = self.state[p]
+                # State initialization
+                if len(state) == 0:
+                    state["step"] = 0
+                    # Exponential moving average of gradient values
+                    state["exp_avg"] = torch.zeros_like(p.data)
+                    # Exponential moving average of squared gradient values
+                    state["exp_avg_sq"] = torch.zeros_like(p.data)
+
+                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                beta1, beta2 = group["betas"]
+
+                state["step_copy"] = state["step"]
+                state["exp_avg_copy"] = exp_avg.clone()
+                state["exp_avg_sq_copy"] = exp_avg_sq.clone()
+                state["beta1"] = beta1
+                state["beta2"] = beta2
+
+                state["data"] = p.data.clone()
+                if p.grad is None:
+                    state["grad"] = torch.zeros_like(p.data)
+                else:
+                    state["grad"] = p.grad.data.clone()
+
+
+    def set_grad(self, steps):
+        for group in self.param_groups:
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                grad = p.grad.data
+                if grad.is_sparse:
+                    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+
+                state = self.state[p]
+                state["step"] = state["step_copy"]
+                state["exp_avg"].copy_(state["exp_avg_copy"])
+                state["exp_avg_sq"].copy_(state["exp_avg_sq_copy"])
+                group["betas"] = (state["beta1"], state["beta2"])
+
+                p.grad.data.copy_(state["grad"]+(state["data"]-p.data)/steps)
+                p.data.copy_(state["data"])
+
+
     def step(self, closure=None):
         """Performs a single optimization step.
 
