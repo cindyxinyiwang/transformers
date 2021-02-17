@@ -165,7 +165,7 @@ class AdamW(Optimizer):
                 state["exp_avg_sq"].copy_(state["exp_avg_sq_copy"])
                 group["betas"] = (state["beta1"], state["beta2"])
 
-                p.grad.data.copy_(state["grad"]+(state["data"]-p.data)/steps)
+                p.grad.data.copy_(state["grad"]+p.grad.data)
                 p.data.copy_(state["data"])
 
 
