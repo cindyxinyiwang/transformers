@@ -592,6 +592,7 @@ class RobertaForTokenClassification(BertPreTrainedModel):
         labels=None,
         reduction='mean',
         extra_mask=None,
+        perturbs=None,
     ):
 
         outputs = self.roberta(
@@ -601,6 +602,7 @@ class RobertaForTokenClassification(BertPreTrainedModel):
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
+            perturbs=None
         )
 
         sequence_output = outputs[0]

@@ -312,7 +312,7 @@ class BertSelfOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.dp_prob = config.hidden_dropout_prob
 
-    def forward(self, hidden_states, input_tensor, adapter=None):
+    def forward(self, hidden_states, input_tensor, adapter=None, use_adapter=False):
         hidden_states = self.dense(hidden_states)
         #if self.training and self.dp_prob > 0:
         #    if dp_mask is None:
@@ -323,7 +323,7 @@ class BertSelfOutput(nn.Module):
         #else:
         #    mask = None
         hidden_states = self.dropout(hidden_states)
-        if adapter is not None:
+        if adapter is not None and use_adapter:
             hidden_states, down, up = adapter(hidden_states, input_tensor)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
@@ -367,11 +367,12 @@ class BertAttention(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         adapter=None,
+        use_adapter=False,
     ):
         self_outputs = self.self(
             hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask
         )
-        attention_output = self.output(self_outputs[0], hidden_states, adapter=adapter)
+        attention_output = self.output(self_outputs[0], hidden_states, adapter=adapter, use_adapter=use_adapter)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
 
@@ -399,7 +400,7 @@ class BertOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.dp_prob = config.hidden_dropout_prob
 
-    def forward(self, hidden_states, input_tensor, adapter=None):
+    def forward(self, hidden_states, input_tensor, adapter=None, use_adapter=False):
         dense_out = self.dense(hidden_states)
         #if self.training and self.dp_prob > 0:
         #    if dp_mask is None:
@@ -411,7 +412,7 @@ class BertOutput(nn.Module):
         #    mask = None
         dense_out = self.dropout(dense_out)
         hidden_states = self.LayerNorm(dense_out + input_tensor)
-        if adapter is not None:
+        if adapter is not None and use_adapter:
             hidden_states, down, up = adapter(hidden_states, dense_out)
             hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
@@ -441,8 +442,9 @@ class BertLayer(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        use_adapter=False,
     ):
-        self_attention_outputs = self.attention(hidden_states, attention_mask, head_mask, adapter=self.adapter_first)
+        self_attention_outputs = self.attention(hidden_states, attention_mask, head_mask, adapter=self.adapter_first, use_adapter=use_adapter)
         attention_output = self_attention_outputs[0]
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
@@ -454,7 +456,7 @@ class BertLayer(nn.Module):
             outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
 
         intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output, adapter=self.adapter_second)
+        layer_output = self.output(intermediate_output, attention_output, adapter=self.adapter_second, use_adapter=use_adapter)
         outputs = (layer_output,) + outputs
         return outputs 
 
@@ -473,15 +475,19 @@ class BertEncoder(nn.Module):
         head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        use_adapter=False,
+        perturbs=None,
     ):
         all_hidden_states = ()
         all_attentions = ()
         for i, layer_module in enumerate(self.layer):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
-
+            if perturbs is not None and i in perturbs:
+                hidden_states = hidden_states + perturbs[i]
             layer_outputs = layer_module(
-                hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask
+                hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask,
+                use_adapter=use_adapter
             )
             hidden_states = layer_outputs[0]
 
@@ -753,6 +759,8 @@ class BertModel(BertPreTrainedModel):
         inputs_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+        use_adapter=False,
+        perturbs=None,
     ):
         """ Forward pass on the Model.
 
@@ -872,6 +880,8 @@ class BertModel(BertPreTrainedModel):
             head_mask=head_mask,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
+            use_adapter=use_adapter,
+            perturbs=perturbs,
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)
@@ -1405,9 +1415,10 @@ class BertForTokenClassification(BertPreTrainedModel):
         labels=None,
         reduction='mean',
         extra_mask=None,
-        noise=0,
         return_seq_out=False,
         mix_seq_out=None,
+        use_adapter=False,
+        perturbs=None,
     ):
 
         outputs = self.bert(
@@ -1417,14 +1428,16 @@ class BertForTokenClassification(BertPreTrainedModel):
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
+            use_adapter=use_adapter,
+            perturbs=perturbs,
         )
 
         sequence_output = outputs[0]
 
-        if noise > 0:
-            noised = torch.zeros_like(sequence_output).normal_(0, 1) * noise
-            noised.to(sequence_output.device)
-            sequence_output = sequence_output + noised
+        #if noise > 0:
+        #    noised = torch.zeros_like(sequence_output).normal_(0, 1) * noise
+        #    noised.to(sequence_output.device)
+        #    sequence_output = sequence_output + noised
 
         sequence_output = self.dropout(sequence_output)
         if return_seq_out:
