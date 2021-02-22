@@ -249,7 +249,7 @@ class PreTrainedTokenizer(PreTrainedTokenizerBase):
 
         text, kwargs = self.prepare_for_tokenization(text, **kwargs)
 
-        if kwargs:
+        if kwargs and not (len(kwargs) == 1 and "dropout" in kwargs):
             logger.warning(f"Keyword arguments {kwargs} not recognized.")
 
         # TODO: should this be in the base class?

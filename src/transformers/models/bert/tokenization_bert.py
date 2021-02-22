@@ -546,7 +546,7 @@ class WordpieceTokenizer(object):
                     substr = "".join(chars[start:end])
                     if start > 0:
                         substr = "##" + substr
-                    if substr in self.vocab and dropout > 0 and random.random() >= dropout:
+                    if substr in self.vocab and random.random() >= dropout:
                         cur_substr = substr
                         break
                     end -= 1
