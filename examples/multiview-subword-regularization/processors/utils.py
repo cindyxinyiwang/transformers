@@ -120,9 +120,9 @@ def convert_examples_to_features(
     #   example = processor.tfds_map(example)
 
     if isinstance(tokenizer, XLMTokenizer):
-      inputs = tokenizer.encode_plus(example.text_a, example.text_b, add_special_tokens=True, max_length=max_length, lang=example.language, dropout=bpe_dropout)
+      inputs = tokenizer.encode_plus(example.text_a, example.text_b, add_special_tokens=True, max_length=max_length, lang=example.language, dropout=bpe_dropout, return_token_type_ids=True)
     else:
-      inputs = tokenizer.encode_plus(example.text_a, example.text_b, add_special_tokens=True, max_length=max_length, dropout=bpe_dropout)
+      inputs = tokenizer.encode_plus(example.text_a, example.text_b, add_special_tokens=True, max_length=max_length, dropout=bpe_dropout, return_token_type_ids=True)
     
     input_ids, token_type_ids = inputs["input_ids"], inputs["token_type_ids"]
 
