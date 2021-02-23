@@ -162,6 +162,7 @@ class precalcSDE(nn.Module):
         self.register_buffer('ngram_offsets', torch.LongTensor(ngram_offsets))
         self.register_buffer('ngram_ids', torch.LongTensor(sum(ngrams_id, [])))
 
+        self.dim = dim
         self.ngram_emb = nn.EmbeddingBag(len(ngram_to_id), embedding_dim=dim, mode=ngram_pool_mode)
         #self.language_transformations = nn.ModuleDict({
         #    p: nn.Linear(dim, dim, bias=False) for p in pairs
@@ -169,13 +170,6 @@ class precalcSDE(nn.Module):
         self.latent_mat = nn.Parameter(torch.empty(latent, dim))
         self.special_emb = nn.Parameter(torch.empty(4, dim))
         self.mask_emb = nn.Parameter(torch.empty(1, dim))
-
-        # run weight initialization
-        nn.init.normal_(self.ngram_emb.weight, mean=0, std=dim ** -0.5)
-        nn.init.normal_(self.latent_mat, mean=0, std=latent ** -0.5)
-        nn.init.normal_(self.special_emb, mean=0, std=dim ** -0.5)
-        nn.init.normal_(self.mask_emb, mean=0, std=dim ** -0.5)
-        nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
 
         if do_layer_norm:
             self.layer_norm = LayerNorm(dim)
@@ -199,6 +193,15 @@ class precalcSDE(nn.Module):
 
         emb_weight = torch.cat((self.special_emb, token_emb, self.mask_emb), dim=0)
         self.sde_weight = emb_weight
+
+    def init_weight(self):
+        # run weight initialization
+        nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
+        nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
+        nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
+        nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
+        nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
+
 
     @staticmethod
     def to_ngram(word: str, n=4):
@@ -233,7 +236,8 @@ class precalcSDE(nn.Module):
 
     @property
     def weight(self):
-        return torch.nn.Parameter(self.sde_weight)
+        return self.sde_weight
+        #return torch.nn.Parameter(self.sde_weight)
 
 
 class SDENoWeight(precalcSDE):

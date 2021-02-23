@@ -73,7 +73,9 @@ class RobertaEmbeddings(nn.Module):
     # Copied from transformers.models.bert.modeling_bert.BertEmbeddings.__init__
     def __init__(self, config):
         super().__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.sde_embed = config.sde_embed
+        if not config.sde_embed:
+            self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
@@ -998,6 +1000,7 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         self.lm_head = RobertaLMHead(config)
 
         self.init_weights()
+        self.sde_embed = config.sde_embed
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
@@ -1052,7 +1055,11 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        prediction_scores = self.lm_head(sequence_output)
+        if self.sde_embed:
+            sde_embed = self.get_input_embeddings().weight
+        else:
+            sde_embed = None
+        prediction_scores = self.lm_head(sequence_output, sde_embed=sde_embed)
 
         masked_lm_loss = None
         if labels is not None:
@@ -1079,11 +1086,15 @@ class RobertaLMHead(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        if not config.sde_embed:
+            self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+            self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
+            # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+            self.decoder.bias = self.bias
+        else:
+            self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.sde_embed = config.sde_embed
 
     def forward(self, features, **kwargs):
         x = self.dense(features)
@@ -1091,7 +1102,11 @@ class RobertaLMHead(nn.Module):
         x = self.layer_norm(x)
 
         # project back to size of vocabulary with bias
-        x = self.decoder(x)
+        if self.sde_embed:
+            sde_embed = kwargs.get("sde_embed")
+            x = torch.nn.functional.linear(x, sde_embed, bias=self.bias)
+        else:
+            x = self.decoder(x)
 
         return x
 

@@ -243,6 +243,7 @@ class PretrainedConfig(object):
         self.sep_token_id = kwargs.pop("sep_token_id", None)
 
         self.decoder_start_token_id = kwargs.pop("decoder_start_token_id", None)
+        self.sde_embed = kwargs.pop("sde_embed", False)
 
         # task specific arguments
         self.task_specific_params = kwargs.pop("task_specific_params", None)

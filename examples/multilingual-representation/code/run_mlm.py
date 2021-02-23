@@ -299,6 +299,7 @@ def main():
 
     if model_args.SDE == "precalc":
         sde_embedding = precalcSDE(tokenizer, dim=model_args.hidden_size)
+        sde_embedding.init_weight()
     else:
         sde_embedding = None
 
@@ -310,6 +311,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "sde_embed": model_args.SDE is not None,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -325,6 +327,7 @@ def main():
             "num_attention_heads": model_args.num_attention_heads,
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
+            "sde_embed": model_args.SDE is not None,
         }
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -346,10 +349,10 @@ def main():
     if sde_embedding is not None:
         logger.info("Reset SDE embed")
         model.roberta.set_input_embeddings(sde_embedding)
-        model.tie_weights()
+    else:
+        model.resize_token_embeddings(len(tokenizer))
 
-    #model.resize_token_embeddings(len(tokenizer))
-
+    logger.info([n for n in model.named_parameters()])
     # Preprocessing the datasets.
     # First we tokenize all the texts.
     if training_args.do_train:

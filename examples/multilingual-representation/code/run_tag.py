@@ -44,6 +44,7 @@ from transformers import (
   AutoConfig,
   AutoModelForTokenClassification,
   AutoTokenizer,
+  precalcSDE,
 )
 #from xlm import XLMForTokenClassification
 
@@ -351,9 +352,9 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
                           bpe_dropout=bpe_dropout,
                           )
       features.extend(features_lg)
-    if args.local_rank in [-1, 0]:
-      logger.info("Saving features into cached file {}, len(features)={}".format(cached_features_file, len(features)))
-      torch.save(features, cached_features_file)
+    #if args.local_rank in [-1, 0]:
+    #  logger.info("Saving features into cached file {}, len(features)={}".format(cached_features_file, len(features)))
+    #  torch.save(features, cached_features_file)
 
   # Make sure only the first process in distributed training process
   # the dataset, and the others will use the cache
@@ -535,6 +536,8 @@ def main():
 
   parser.add_argument("--few_shot_extra_langs", type=str, default=None)
   parser.add_argument("--few_shot_extra_langs_size", type=str, default=None)
+
+  parser.add_argument("--SDE", type=str, default=None)
   args = parser.parse_args()
 
   if os.path.exists(args.output_dir) and os.listdir(
@@ -598,6 +601,10 @@ def main():
       cache_dir=args.cache_dir,
       use_fast=False,
   )
+  if args.SDE == "precalc":
+    sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size)
+  else:
+    sde_embedding = None
 
   if args.init_checkpoint:
     logger.info("loading from init_checkpoint={}".format(args.init_checkpoint))
@@ -605,6 +612,7 @@ def main():
         args.init_checkpoint,
         config=config,
         cache_dir=args.cache_dir,
+        sde_embedding=sde_embedding,
     )
   else:
     logger.info("loading from existing model {}".format(args.model_name_or_path))
@@ -613,6 +621,7 @@ def main():
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
         cache_dir=args.cache_dir,
+        sde_embedding=sde_embedding,
     )
 
   lang2id = config.lang2id if args.model_type == "xlm" else None
@@ -669,7 +678,7 @@ def main():
 
     for checkpoint in checkpoints:
       global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-      model = AutoModelForTokenClassification.from_pretrained(checkpoint)
+      model = AutoModelForTokenClassification.from_pretrained(checkpoint, sde_embedding=sde_embedding)
       model.to(args.device)
       result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step, lang=args.train_langs, lang2id=lang2id)
       if result["f1"] > best_f1:
@@ -689,7 +698,7 @@ def main():
   if args.do_predict and args.local_rank in [-1, 0]:
     logger.info("Loading the best checkpoint from {}\n".format(best_checkpoint))
     tokenizer = AutoTokenizer.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case, use_fast=False)
-    model = AutoModelForTokenClassification.from_pretrained(best_checkpoint)
+    model = AutoModelForTokenClassification.from_pretrained(best_checkpoint, sde_embedding=sde_embedding)
     model.to(args.device)
 
     output_test_results_file = os.path.join(args.output_dir, "test_results.txt")

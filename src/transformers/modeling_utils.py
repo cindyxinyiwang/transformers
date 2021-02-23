@@ -498,14 +498,17 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin, GenerationMixin):
         If the :obj:`torchscript` flag is set in the configuration, can't handle parameter sharing so we are cloning
         the weights instead.
         """
-        output_embeddings = self.get_output_embeddings()
-        if output_embeddings is not None and self.config.tie_word_embeddings:
-            self._tie_or_clone_weights(output_embeddings, self.get_input_embeddings())
+        try:
+            output_embeddings = self.get_output_embeddings()
+            if output_embeddings is not None and self.config.tie_word_embeddings:
+                self._tie_or_clone_weights(output_embeddings, self.get_input_embeddings())
 
-        if self.config.is_encoder_decoder and self.config.tie_encoder_decoder:
-            if hasattr(self, self.base_model_prefix):
-                self = getattr(self, self.base_model_prefix)
-            self._tie_encoder_decoder_weights(self.encoder, self.decoder, self.base_model_prefix)
+            if self.config.is_encoder_decoder and self.config.tie_encoder_decoder:
+                if hasattr(self, self.base_model_prefix):
+                    self = getattr(self, self.base_model_prefix)
+                self._tie_encoder_decoder_weights(self.encoder, self.decoder, self.base_model_prefix)
+        except:
+            return
 
     @staticmethod
     def _tie_encoder_decoder_weights(encoder: nn.Module, decoder: nn.Module, base_model_prefix: str):
@@ -953,6 +956,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin, GenerationMixin):
         revision = kwargs.pop("revision", None)
         mirror = kwargs.pop("mirror", None)
 
+        sde_embed = kwargs.pop("sde_embedding", None)
         # Load config if we don't provide a configuration
         if not isinstance(config, PretrainedConfig):
             config_path = config if config is not None else pretrained_model_name_or_path
@@ -1040,7 +1044,8 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin, GenerationMixin):
 
         # Instantiate model.
         model = cls(config, *model_args, **model_kwargs)
-
+        if sde_embed is not None:
+            model.roberta.set_input_embeddings(sde_embed)
         if state_dict is None and not from_tf:
             try:
                 state_dict = torch.load(resolved_archive_file, map_location="cpu")
