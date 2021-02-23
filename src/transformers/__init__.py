@@ -57,6 +57,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Base objects, independent of any specific backend
 _import_structure = {
+    "sde_embedding": ["precalcSDE"],
     "configuration_utils": ["PretrainedConfig"],
     "data": [
         "DataProcessor",
@@ -1192,6 +1193,7 @@ else:
 
 # Direct imports for type-checking
 if TYPE_CHECKING:
+    from .sde_embedding import precalcSDE
     # Configuration
     from .configuration_utils import PretrainedConfig
 

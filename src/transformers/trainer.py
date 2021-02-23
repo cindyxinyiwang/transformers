@@ -248,8 +248,8 @@ class Trainer:
         self.is_in_train = False
 
         # memory metrics - must set up as early as possible
-        self._memory_tracker = TrainerMemoryTracker(self.args.skip_memory_metrics)
-        self._memory_tracker.start()
+        #self._memory_tracker = TrainerMemoryTracker(self.args.skip_memory_metrics)
+        #self._memory_tracker.start()
 
         # force device and distributed setup init explicitly
         args._setup_devices
@@ -403,7 +403,7 @@ class Trainer:
         self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)
 
         # very last
-        self._memory_tracker.stop_and_update_metrics()
+        #self._memory_tracker.stop_and_update_metrics()
 
     def add_callback(self, callback):
         """
@@ -776,7 +776,7 @@ class Trainer:
         """
 
         # memory metrics - must set up as early as possible
-        self._memory_tracker.start()
+        #self._memory_tracker.start()
 
         self.is_in_train = True
 
@@ -1102,7 +1102,7 @@ class Trainer:
 
         self.is_in_train = False
 
-        self._memory_tracker.stop_and_update_metrics(metrics)
+        #self._memory_tracker.stop_and_update_metrics(metrics)
 
         return TrainOutput(self.state.global_step, self._total_loss_scalar / self.state.global_step, metrics)
 
@@ -1593,7 +1593,7 @@ class Trainer:
             dictionary also contains the epoch number which comes from the training state.
         """
         # memory metrics - must set up as early as possible
-        self._memory_tracker.start()
+        #self._memory_tracker.start()
 
         if eval_dataset is not None and not isinstance(eval_dataset, collections.abc.Sized):
             raise ValueError("eval_dataset must implement __len__")
@@ -1621,7 +1621,7 @@ class Trainer:
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
-        self._memory_tracker.stop_and_update_metrics(output.metrics)
+        #self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output.metrics
 
@@ -1659,7 +1659,7 @@ class Trainer:
               contained labels).
         """
         # memory metrics - must set up as early as possible
-        self._memory_tracker.start()
+        #self._memory_tracker.start()
 
         if test_dataset is not None and not isinstance(test_dataset, collections.abc.Sized):
             raise ValueError("test_dataset must implement __len__")
@@ -1672,7 +1672,7 @@ class Trainer:
         )
         output.metrics.update(speed_metrics(metric_key_prefix, start_time, len(test_dataset)))
 
-        self._memory_tracker.stop_and_update_metrics(output.metrics)
+        #self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output
 
