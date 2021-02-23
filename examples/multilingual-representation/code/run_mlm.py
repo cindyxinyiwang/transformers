@@ -43,6 +43,7 @@ from transformers import (
     TrainingArguments,
     set_seed,
     XLMRobertaTokenizer,
+    precalcSDE,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 
@@ -107,7 +108,7 @@ class ModelArguments:
     intermediate_size: int = field(
         default=1536,
     )
-    num_attention_head: int = field(
+    num_attention_heads: int = field(
         default=4,
     )
     num_hidden_layers: int = field(
@@ -116,6 +117,14 @@ class ModelArguments:
     type_vocab_size: int = field(
         default=1,
     )
+    SDE: str = field(
+        default=None,
+    )
+    log_file: str = field(
+        default=None,
+    )
+
+
 
 
 @dataclass
@@ -212,9 +221,9 @@ def main():
 
     # Setup logging
     logging.basicConfig(
+        handlers = [logging.FileHandler(model_args.log_file), logging.StreamHandler()],
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        handlers=[logging.StreamHandler(sys.stdout)],
     )
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
@@ -288,6 +297,11 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
+    if model_args.SDE == "precalc":
+        sde_embedding = precalcSDE(tokenizer, dim=model_args.hidden_size)
+    else:
+        sde_embedding = None
+
     #
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
@@ -308,7 +322,7 @@ def main():
             "model_max_length": data_args.max_seq_length,
             "hidden_size": model_args.hidden_size,
             "intermediate_size": model_args.intermediate_size,
-            "num_attention_head": model_args.num_attention_head,
+            "num_attention_heads": model_args.num_attention_heads,
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
         }
@@ -329,7 +343,12 @@ def main():
         logger.info("Training new model from scratch")
         model = AutoModelForMaskedLM.from_config(config)
 
-    model.resize_token_embeddings(len(tokenizer))
+    if sde_embedding is not None:
+        logger.info("Reset SDE embed")
+        model.roberta.set_input_embeddings(sde_embedding)
+        model.tie_weights()
+
+    #model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
