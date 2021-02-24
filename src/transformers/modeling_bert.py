@@ -1480,7 +1480,51 @@ class BertForTokenClassification(BertPreTrainedModel):
         #    return outputs, [bert_dp_masks, out_mask]  # (loss), scores, (hidden_states), (attentions)
         #else:
         #    return outputs
+        outputs = outputs + (sequence_output,)
         return outputs
+
+    def forward_mix(
+        self,
+        seq1=None,
+        seq2=None,
+        attention_mask1=None,
+        attention_mask2=None,
+        tau=1,
+        labels1=None,
+        labels2=None,
+        reduction='mean',
+    ):
+        sequence_output = seq1*tau + seq2*(1-tau)
+
+        logits = self.classifier(sequence_output)
+        outputs = (logits,)  # add hidden states and attention if they are here
+        loss_fct = CrossEntropyLoss(reduction=reduction)
+        if attention_mask1 is not None:
+            attention_mask = attention_mask1.view(-1) == 1
+            if attention_mask2 is not None:
+                attention_mask = (attention_mask & (attention_mask2.view(-1) == 1))
+        else:
+            if attention_mask2 is not None:
+                attention_mask = attention_mask2.view(-1) == 1
+            else:
+                attention_mask = None
+        # Only keep active parts of the loss
+        if attention_mask is not None:
+            active_loss = attention_mask
+            active_logits = logits.view(-1, self.num_labels)[active_loss]
+            active_labels1 = labels1.view(-1)[active_loss]
+            active_labels2 = labels2.view(-1)[active_loss]
+            loss1 = loss_fct(active_logits, active_labels1)
+            loss2 = loss_fct(active_logits, active_labels2)
+            loss = loss1*tau + loss2*(1-tau)
+        else:
+            loss1 = loss_fct(logits.view(-1, self.num_labels), labels1.view(-1))
+            loss2 = loss_fct(logits.view(-1, self.num_labels), labels2.view(-1))
+            logits = logits.view(-1, self.num_labels)
+            loss = loss1*tau + loss2*(1-tau)
+        outputs = (loss,) + outputs + (logits,)
+        return outputs
+
 
 class BertForMLMandTokenClassification(BertPreTrainedModel):
     r"""
