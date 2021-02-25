@@ -178,6 +178,16 @@ class DataTrainingArguments:
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
+    topk: int = field(
+        default=0, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
+    self_aug: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to pad all samples to `max_seq_length`. "
+            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+        },
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -311,7 +321,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
-        "sde_embed": model_args.SDE is not None,
+        "sde_embed": "combine",
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -327,8 +337,9 @@ def main():
             "num_attention_heads": model_args.num_attention_heads,
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
-            "sde_embed": model_args.SDE is not None,
+            "sde_embed": "combine",
         }
+        #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
         logger.warning("You are instantiating a new config instance from scratch.")
         logger.info(config)
@@ -342,17 +353,30 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+        if not data_args.self_aug:
+            pretrained_model = AutoModelForMaskedLM.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+            pretrained_model.to(training_args.device)
+        else:
+            pretrained_model = model
     else:
         logger.info("Training new model from scratch")
         model = AutoModelForMaskedLM.from_config(config)
 
     if sde_embedding is not None:
         logger.info("Reset SDE embed")
-        model.roberta.set_input_embeddings(sde_embedding)
+        model.roberta.embeddings.sde_embeddings = sde_embedding
+        #model.roberta.set_input_embeddings(sde_embedding)
     else:
         model.resize_token_embeddings(len(tokenizer))
 
-    logger.info([n for n in model.named_parameters()])
+    logger.info([n for (n, p) in model.named_parameters()])
     # Preprocessing the datasets.
     # First we tokenize all the texts.
     if training_args.do_train:
@@ -447,7 +471,7 @@ def main():
 
     # Data collator
     # This one will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
 
     # Initialize our Trainer
     trainer = Trainer(

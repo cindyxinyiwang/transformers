@@ -15,7 +15,6 @@
 """
 The Trainer class, to easily train a 🤗 Transformers from scratch or finetune it on a new task.
 """
-
 import collections
 import gc
 import inspect
@@ -102,6 +101,7 @@ from .trainer_utils import (
 )
 from .training_args import ParallelMode, TrainingArguments
 from .utils import logging
+from .aug_utils import switchout, mlm_switch_tokens
 
 
 _is_native_amp_available = False
@@ -1120,6 +1120,7 @@ class Trainer:
                 if version.parse(torch.__version__) >= version.parse("1.4")
                 else self.lr_scheduler.get_lr()[0]
             )
+            logger.info("  loss={} lr={}".format(logs["loss"], logs["learning_rate"]))
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
 
@@ -1390,8 +1391,13 @@ class Trainer:
         """
 
         model.train()
-        inputs = self._prepare_inputs(inputs)
 
+        #print(inputs)
+        # input_ids, labels, attention_mask
+        #if self.args.tau > 0:
+        #    #inputs["input_ids"] = switchout(inputs["input_ids"], inputs["attention_mask"], tau=self.args.tau, tokenizer=self.tokenizer)
+        #    inputs["input_ids"] = mlm_switch_tokens(inputs["input_ids"], inputs["attention_mask"], p=self.args.tau, tokenizer=self.tokenizer, pretrained_model=model)
+        inputs = self._prepare_inputs(inputs)
         if self.use_amp:
             with autocast():
                 loss = self.compute_loss(model, inputs)

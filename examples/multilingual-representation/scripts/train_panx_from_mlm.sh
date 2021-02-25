@@ -14,19 +14,21 @@
 # limitations under the License.
 
 REPO=$PWD
-GPU=${1:-1}
-#MODEL=${2:-bert-base-multilingual-cased}
-MODEL=${2:-xlm-roberta-base}
+GPU=${1:-0}
+MODEL=${2:-bert-base-multilingual-cased}
+#MODEL=${2:-xlm-roberta-base}
 DATA_DIR=${3:-"/home/xinyiw/download/"}
 OUT_DIR=${4:-"$REPO/outputs/"}
 
-MODEL=outputs/sw_mlm/checkpoint-4000/
-MODEL_TYPE="xlmr"
+TAU=0
+MODEL=outputs/bert_mr_mlm/
+MODEL_TYPE="bert"
 
 export CUDA_VISIBLE_DEVICES=$GPU
 TASK='panx'
-LANGS="sw"
-TRAIN_LANGS="sw"
+#LANGS="mr,hi"
+LANGS="mr,hi,bn"
+TRAIN_LANGS="hi"
 
 NUM_EPOCHS=10
 MAX_LENGTH=128
@@ -52,10 +54,11 @@ else
 fi
 
 DATA_DIR=$DATA_DIR/${TASK}/${TASK}_processed_maxlen${MAX_LENGTH}/
-for SEED in 1;
+for SEED in 1 2 3 4 5;
 do
-OUTPUT_DIR="$OUT_DIR/$TASK/LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
+OUTPUT_DIR="$OUT_DIR/$TASK/mr_tau${TAU}_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
 
+#  --SDE "precalc" \
 mkdir -p $OUTPUT_DIR
 python $REPO/code/run_tag.py \
   --do_train \

@@ -477,6 +477,7 @@ class TrainingArguments:
     )
     _n_gpu: int = field(init=False, repr=False, default=-1)
 
+    tau: float = field(default=0)
     def __post_init__(self):
         if self.output_dir is None and os.getenv("SM_OUTPUT_DATA_DIR") is None:
             raise ValueError(

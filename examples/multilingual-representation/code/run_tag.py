@@ -335,7 +335,7 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
     features = []
     for lg in langs:
       #data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, args.model_name_or_path))
-      data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, "xlm-roberta-base"))
+      data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, "bert-base-multilingual-cased"))
       logger.info("Creating features from dataset file at {} in language {}".format(data_file, lg))
       examples = read_examples_from_file(data_file, lg, lang2id)
       features_lg = convert_examples_to_features(examples, labels, args.max_seq_length, tokenizer,
@@ -394,7 +394,7 @@ def load_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2
   features = []
   for lg in langs:
     #data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, args.model_name_or_path))
-    data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, "xlm-roberta-base"))
+    data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, "bert-base-multilingual-cased"))
     logger.info("Creating features from dataset file at {} in language {}".format(data_file, lg))
     examples = read_examples_from_file(data_file, lg, lang2id)
     features_lg = convert_examples_to_features(examples, labels, args.max_seq_length, tokenizer,
@@ -588,11 +588,16 @@ def main():
   # Make sure only the first process in distributed training loads model/vocab
   if args.local_rank not in [-1, 0]:
     torch.distributed.barrier()
+  if args.SDE is not None: 
+      sde_embed = "combine"
+  else:
+      sde_embed = None
 
   config = AutoConfig.from_pretrained(
       args.config_name if args.config_name else args.model_name_or_path,
       num_labels=num_labels,
       cache_dir=args.cache_dir,
+      sde_embed=sde_embed,
   )
   args.model_type = config.model_type
   tokenizer = AutoTokenizer.from_pretrained(
@@ -678,7 +683,8 @@ def main():
 
     for checkpoint in checkpoints:
       global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-      model = AutoModelForTokenClassification.from_pretrained(checkpoint, sde_embedding=sde_embedding)
+      model = AutoModelForTokenClassification.from_pretrained(checkpoint, sde_embedding=sde_embedding,
+)
       model.to(args.device)
       result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step, lang=args.train_langs, lang2id=lang2id)
       if result["f1"] > best_f1:
@@ -705,7 +711,7 @@ def main():
     with open(output_test_results_file, "a") as result_writer:
       for lang in args.predict_langs.split(','):
         #if not os.path.exists(os.path.join(args.data_dir, lang, 'test.{}'.format(args.model_name_or_path))):
-        if not os.path.exists(os.path.join(args.data_dir, lang, 'test.{}'.format("xlm-roberta-base"))):
+        if not os.path.exists(os.path.join(args.data_dir, lang, 'test.{}'.format("bert-base-multilingual-cased"))):
           logger.info("Language {} does not exist".format(lang))
           continue
         result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test", lang=lang, lang2id=lang2id)
@@ -717,7 +723,7 @@ def main():
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
         #infile = os.path.join(args.data_dir, lang, "test.{}".format(args.model_name_or_path))
-        infile = os.path.join(args.data_dir, lang, "test.{}".format("xlm-roberta-base"))
+        infile = os.path.join(args.data_dir, lang, "test.{}".format("bert-base-multilingual-cased"))
         idxfile = infile + '.idx'
         save_predictions(args, predictions, output_test_predictions_file, infile, idxfile)
 
@@ -768,7 +774,7 @@ def main():
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir, "dev_{}_predictions.txt".format(lang))
         #infile = os.path.join(args.data_dir, lang, "dev.{}".format(args.model_name_or_path))
-        infile = os.path.join(args.data_dir, lang, "dev.{}".format("xlm-roberta-base"))
+        infile = os.path.join(args.data_dir, lang, "dev.{}".format("bert-base-multilingual-cased"))
         idxfile = infile + '.idx'
         save_predictions(args, predictions, output_test_predictions_file, infile, idxfile)
 

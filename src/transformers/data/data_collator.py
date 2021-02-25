@@ -23,6 +23,7 @@ from torch.nn.utils.rnn import pad_sequence
 from ..modeling_utils import PreTrainedModel
 from ..tokenization_utils_base import BatchEncoding, PaddingStrategy, PreTrainedTokenizerBase
 
+from ..aug_utils import switchout, mlm_switch_tokens
 
 InputDataClass = NewType("InputDataClass", Any)
 
@@ -322,6 +323,9 @@ class DataCollatorForLanguageModeling:
     tokenizer: PreTrainedTokenizerBase
     mlm: bool = True
     mlm_probability: float = 0.15
+    tau: float = 0
+    topk: float = 0
+    model: torch.nn.Module = None
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -329,6 +333,8 @@ class DataCollatorForLanguageModeling:
                 "This tokenizer does not have a mask token which is necessary for masked language modeling. "
                 "You should pass `mlm=False` to train on causal language modeling instead."
             )
+        if self.model is not None:
+            self.model.eval()
 
     def __call__(
         self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]
@@ -338,7 +344,11 @@ class DataCollatorForLanguageModeling:
             batch = self.tokenizer.pad(examples, return_tensors="pt")
         else:
             batch = {"input_ids": _collate_batch(examples, self.tokenizer)}
-
+        if self.tau > 0:
+            sampled_ids = mlm_switch_tokens(batch["input_ids"], self.tokenizer, pretrained_model=self.model, p=self.tau, topk=self.topk)
+            batch["input_ids"] = sampled_ids.cpu()
+        if self.model is not None:
+            self.model.train()
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:

@@ -134,7 +134,7 @@ class SDE(nn.Module):
 
 
 class precalcSDE(nn.Module):
-    def __init__(self, tokenizer, pairs=None, ngram_pool_mode='sum', n=4, threshold=32000, dim=128, latent=10000,
+    def __init__(self, tokenizer, pairs=None, ngram_pool_mode='sum', n=4, threshold=32000, dim=128, latent=0,
                  do_layer_norm=False):
         super(precalcSDE, self).__init__()
         self.padding_idx = tokenizer.pad_token_id
@@ -155,7 +155,13 @@ class precalcSDE(nn.Module):
         UNK_ID = 0
         ngram_to_id['<UNK>'] = UNK_ID
 
-        ngrams_id = [[ngram_to_id.get(w, UNK_ID) for w in ww] for ww in word_ngrams]
+        #ngrams_id = [[ngram_to_id.get(w, UNK_ID) for w in ww] for ww in word_ngrams]
+        ngrams_id = []
+        for ww in word_ngrams:
+            ids = []
+            for w in ww:
+                if w in ngram_to_id: ids.append(ngram_to_id[w])
+            ngrams_id.append(ids)
         ngram_offsets = [0]
         for xx in ngrams_id[1:]:
             ngram_offsets.append(ngram_offsets[-1] + len(xx))
@@ -167,7 +173,10 @@ class precalcSDE(nn.Module):
         #self.language_transformations = nn.ModuleDict({
         #    p: nn.Linear(dim, dim, bias=False) for p in pairs
         #})
-        self.latent_mat = nn.Parameter(torch.empty(latent, dim))
+        if latent > 0:
+            self.latent_mat = nn.Parameter(torch.empty(latent, dim))
+        else:
+            self.latent_mat = None
         self.special_emb = nn.Parameter(torch.empty(4, dim))
         self.mask_emb = nn.Parameter(torch.empty(1, dim))
 
@@ -185,11 +194,14 @@ class precalcSDE(nn.Module):
         #lang_emb = self.language_transformations[lang_pair](ngram_weight)  # N_ng * dim
         #lang_emb = torch.tanh(lang_emb)
         # latent
-        latent_scores = torch.matmul(lang_emb, self.latent_mat.transpose(0, 1))
-        latent_distribution = torch.softmax(latent_scores, dim=-1)
-        latent_emb = torch.matmul(latent_distribution, self.latent_mat)
-        # residual connection
-        token_emb = lang_emb + latent_emb  # threshold * dim
+        if self.latent_mat is not None:
+            latent_scores = torch.matmul(lang_emb, self.latent_mat.transpose(0, 1))
+            latent_distribution = torch.softmax(latent_scores, dim=-1)
+            latent_emb = torch.matmul(latent_distribution, self.latent_mat)
+            # residual connection
+            token_emb = lang_emb + latent_emb  # threshold * dim
+        else:
+            token_emb = lang_emb
 
         emb_weight = torch.cat((self.special_emb, token_emb, self.mask_emb), dim=0)
         self.sde_weight = emb_weight
@@ -197,7 +209,8 @@ class precalcSDE(nn.Module):
     def init_weight(self):
         # run weight initialization
         nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
-        nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
+        if self.latent_mat is not None:
+            nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
         nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
         nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
         nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
@@ -221,12 +234,14 @@ class precalcSDE(nn.Module):
         #lang_emb = self.language_transformations[lang_pair](ngram_weight)  # N_ng * dim
         #lang_emb = torch.tanh(lang_emb)
         # latent
-        latent_scores = torch.matmul(lang_emb, self.latent_mat.transpose(0, 1))
-        latent_distribution = torch.softmax(latent_scores, dim=-1)
-        latent_emb = torch.matmul(latent_distribution, self.latent_mat)
-        # residual connection
-        token_emb = lang_emb + latent_emb  # threshold * dim
-
+        if self.latent_mat is not None:
+            latent_scores = torch.matmul(lang_emb, self.latent_mat.transpose(0, 1))
+            latent_distribution = torch.softmax(latent_scores, dim=-1)
+            latent_emb = torch.matmul(latent_distribution, self.latent_mat)
+            # residual connection
+            token_emb = lang_emb + latent_emb  # threshold * dim
+        else:
+            token_emb = lang_emb
         emb_weight = torch.cat((self.special_emb, token_emb, self.mask_emb), dim=0)
         self.sde_weight = emb_weight
         sde_emb = nn.functional.embedding(x, emb_weight, padding_idx=self.padding_idx)
