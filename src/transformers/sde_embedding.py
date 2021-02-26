@@ -251,8 +251,8 @@ class precalcSDE(nn.Module):
 
     @property
     def weight(self):
-        return self.sde_weight
-        #return torch.nn.Parameter(self.sde_weight)
+        #return self.sde_weight
+        return torch.nn.Parameter(self.sde_weight)
 
 
 class SDENoWeight(precalcSDE):

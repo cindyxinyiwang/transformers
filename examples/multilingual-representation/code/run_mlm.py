@@ -123,6 +123,9 @@ class ModelArguments:
     log_file: str = field(
         default=None,
     )
+    sde_type: str = field(
+        default=None,
+    )
 
 
 
@@ -140,6 +143,7 @@ class DataTrainingArguments:
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+    meta_train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
@@ -321,7 +325,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
-        "sde_embed": "combine",
+        "sde_embed": model_args.sde_type,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -337,7 +341,7 @@ def main():
             "num_attention_heads": model_args.num_attention_heads,
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
-            "sde_embed": "combine",
+            "sde_embed": model_args.sde_type,
         }
         #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
@@ -371,12 +375,12 @@ def main():
 
     if sde_embedding is not None:
         logger.info("Reset SDE embed")
-        model.roberta.embeddings.sde_embeddings = sde_embedding
-        #model.roberta.set_input_embeddings(sde_embedding)
+        #model.roberta.embeddings.sde_embeddings = sde_embedding
+        model.roberta.set_input_embeddings(sde_embedding)
     else:
         model.resize_token_embeddings(len(tokenizer))
 
-    logger.info([n for (n, p) in model.named_parameters()])
+    logger.info([n for (n, p) in model.named_parameters() if p.requires_grad])
     # Preprocessing the datasets.
     # First we tokenize all the texts.
     if training_args.do_train:

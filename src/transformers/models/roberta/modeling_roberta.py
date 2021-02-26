@@ -74,8 +74,9 @@ class RobertaEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.sde_embed = config.sde_embed
-        #if not config.sde_embed and (config.sde_embed != "cmobine"):
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.sde_combine = (config.sde_embed == "combine")
+        if (not config.sde_embed) or self.sde_combine:
+          self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
@@ -93,7 +94,6 @@ class RobertaEmbeddings(nn.Module):
         self.position_embeddings = nn.Embedding(
             config.max_position_embeddings, config.hidden_size, padding_idx=self.padding_idx
         )
-        self.sde_combine = (config.sde_embed == "combine")
 
     def forward(
         self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0
@@ -699,8 +699,8 @@ class RobertaModel(RobertaPreTrainedModel):
     def get_input_embeddings(self):
         return self.embeddings.word_embeddings
 
-    def set_input_embeddings(self, value, combine=True):
-        if combine or self.sde_combine:
+    def set_input_embeddings(self, value):
+        if self.sde_combine:
             self.embeddings.sde_embeddings = value
         else:
             self.embeddings.word_embeddings = value
@@ -1112,13 +1112,14 @@ class RobertaLMHead(nn.Module):
         x = self.layer_norm(x)
 
         # project back to size of vocabulary with bias
-        if self.sde_embed and self.sde_embed != "combine":
-            sde_embed = kwargs.get("sde_embed")
-            #x = torch.nn.functional.linear(x, sde_embed, bias=self.bias)
-            x = torch.nn.functional.linear(x, sde_embed)
-        else:
-            x = self.decoder(x)
+        #if self.sde_embed and self.sde_embed != "combine":
+        #    sde_embed = kwargs.get("sde_embed")
+        #    #x = torch.nn.functional.linear(x, sde_embed, bias=self.bias)
+        #    x = torch.nn.functional.linear(x, sde_embed)
+        #else:
+        #    x = self.decoder(x)
 
+        x = self.decoder(x)
         return x
 
 
