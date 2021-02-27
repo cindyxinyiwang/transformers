@@ -134,7 +134,7 @@ class SDE(nn.Module):
 
 
 class precalcSDE(nn.Module):
-    def __init__(self, tokenizer, pairs=None, ngram_pool_mode='sum', n=4, threshold=32000, dim=128, latent=0,
+    def __init__(self, tokenizer, config, pairs=None, ngram_pool_mode='mean', n=4, threshold=32000, dim=128, latent=10000,
                  do_layer_norm=False):
         super(precalcSDE, self).__init__()
         self.padding_idx = tokenizer.pad_token_id
@@ -205,15 +205,24 @@ class precalcSDE(nn.Module):
 
         emb_weight = torch.cat((self.special_emb, token_emb, self.mask_emb), dim=0)
         self.sde_weight = emb_weight
+        self.config = config
 
     def init_weight(self):
         # run weight initialization
-        nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
+        #if self.latent_mat is not None:
+        #    nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
+        #nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
+
+        nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.config.initializer_range*0.5)
         if self.latent_mat is not None:
-            nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
-        nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
-        nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
+            nn.init.normal_(self.latent_mat, mean=0, std=self.config.initializer_range*0.5)
+        nn.init.normal_(self.special_emb, mean=0, std=self.config.initializer_range*0.5)
+        nn.init.normal_(self.mask_emb, mean=0, std=self.config.initializer_range*0.5)
         nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
+
 
 
     @staticmethod

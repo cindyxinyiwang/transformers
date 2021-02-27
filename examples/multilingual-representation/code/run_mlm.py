@@ -95,6 +95,12 @@ class ModelArguments:
             "with private models)."
         },
     )
+    tie_word_embeddings: bool = field(
+        default=True,
+        metadata={
+            "help": "Whether to tie embeddings."
+        },
+    )
     tokenizer_dir: str = field(
         default=None,
         metadata={"help": "The directory to load tokenizer vocab file."},
@@ -311,11 +317,6 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    if model_args.SDE == "precalc":
-        sde_embedding = precalcSDE(tokenizer, dim=model_args.hidden_size)
-        sde_embedding.init_weight()
-    else:
-        sde_embedding = None
 
     #
     # Distributed training:
@@ -326,6 +327,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
         "sde_embed": model_args.sde_type,
+        "tie_word_embeddings": model_args.tie_word_embeddings,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -342,12 +344,20 @@ def main():
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
             "sde_embed": model_args.sde_type,
+            "tie_word_embeddings": model_args.tie_word_embeddings,
         }
         #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
         logger.warning("You are instantiating a new config instance from scratch.")
         logger.info(config)
 
+    if model_args.SDE == "precalc":
+        sde_embedding = precalcSDE(tokenizer, dim=model_args.hidden_size, config=config)
+        sde_embedding.init_weight()
+    else:
+        sde_embedding = None
+
+    pretrained_model = None
     if model_args.model_name_or_path:
         model = AutoModelForMaskedLM.from_pretrained(
             model_args.model_name_or_path,

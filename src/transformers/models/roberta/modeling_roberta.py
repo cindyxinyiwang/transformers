@@ -118,8 +118,8 @@ class RobertaEmbeddings(nn.Module):
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
 
-        if self.sde_embeddings is not None:
-            inputs_embeds = self.sde_embeddings(input_ids) + inputs_embeds
+        if self.sde_combine and self.sde_embeddings is not None:
+            inputs_embeds = (self.sde_embeddings(input_ids) + inputs_embeds) / 2
 
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
@@ -1094,16 +1094,21 @@ class RobertaLMHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
-        if not config.sde_embed or config.sde_embed == "combine":
-            self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-            self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        self.decoder.bias = self.bias
 
-            # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-            self.decoder.bias = self.bias
-        else:
-            pass
-            #self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        #if not config.sde_embed or config.sde_embed == "combine":
+        #    self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        #    self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+
+        #    # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        #    self.decoder.bias = self.bias
+        #else:
+        #    pass
+        #    #self.bias = nn.Parameter(torch.zeros(config.vocab_size))
         self.sde_embed = config.sde_embed
 
     def forward(self, features, **kwargs):
