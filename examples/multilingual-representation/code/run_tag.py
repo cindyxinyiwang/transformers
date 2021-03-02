@@ -597,7 +597,6 @@ def main():
       args.config_name if args.config_name else args.model_name_or_path,
       num_labels=num_labels,
       cache_dir=args.cache_dir,
-      sde_embed=sde_embed,
   )
   args.model_type = config.model_type
   tokenizer = AutoTokenizer.from_pretrained(
@@ -607,7 +606,7 @@ def main():
       use_fast=False,
   )
   if args.SDE == "precalc":
-    sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size)
+    sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size, config=config)
   else:
     sde_embedding = None
 
