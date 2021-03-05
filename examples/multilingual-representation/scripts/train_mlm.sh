@@ -1,27 +1,29 @@
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=2
 
 OUTDIR=outputs/
-MODEL_DIR=${OUTDIR}/mrhi_sde_mlm/
+MODEL_DIR=${OUTDIR}/mrhi_mlm_sde_wordfixed/
 mkdir -p $OUTDIR
 mkdir -p $MODEL_DIR
 
-#  --train_file data/mrhi_model/mrhi-test.txt \
+#  --train_file data/mrhi_model/mrhi-100k.txt \
 #  --line_by_line \
-#  --SDE "precalc" \
 python code/run_mlm.py \
+  --SDE "precalc" \
+  --sde_type "swap" \
   --overwrite_output_dir \
   --model_type "xlm-roberta" \
-  --tokenizer_dir data/mrhi_model/ \
-  --train_file data/mrhi_model/mrhi-100k.txt \
-  --validation_file data/mrhi_model/mrhi-tail-valid.txt \
+  --tokenizer_file data/mrhi_model/word100k.vocab \
+  --sde_tokenizer_type "word_fixed" \
+  --train_file data/mrhi_model/mrhiwiki.train.txt \
+  --validation_file data/mrhi_model/mrhiwiki.valid.txt \
   --do_train \
   --do_eval \
   --save_steps=1000 \
   --save_total_limit=2 \
-  --num_train_epochs=5 \
+  --num_train_epochs=10 \
   --warmup_steps=1000 \
   --learning_rate=5e-4 \
-  --max_seq_length 256 \
+  --max_seq_length 128 \
   --max_position_embeddings 300 \
   --hidden_size 512 \
   --intermediate_size 1024 \

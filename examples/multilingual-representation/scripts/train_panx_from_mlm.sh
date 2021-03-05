@@ -20,15 +20,17 @@ MODEL=${2:-bert-base-multilingual-cased}
 DATA_DIR=${3:-"/home/xinyiw/download/"}
 OUT_DIR=${4:-"$REPO/outputs/"}
 
-TAU=0
-MODEL=outputs/bert_mr_mlm/
+TAU=0_gmask
+MODEL=outputs//bert_jointfo0.1k_mlm_tau0_gmask/
 MODEL_TYPE="bert"
 
 export CUDA_VISIBLE_DEVICES=$GPU
 TASK='panx'
-#LANGS="mr,hi"
-LANGS="mr,hi,bn"
-TRAIN_LANGS="hi"
+LANGS="fo,is,no,da"
+TRAIN_LANGS="is"
+
+#LANGS="fo,is,no,da"
+#TRAIN_LANGS="is"
 
 NUM_EPOCHS=10
 MAX_LENGTH=128
@@ -56,10 +58,11 @@ fi
 DATA_DIR=$DATA_DIR/${TASK}/${TASK}_processed_maxlen${MAX_LENGTH}/
 for SEED in 1 2 3 4 5;
 do
-OUTPUT_DIR="$OUT_DIR/$TASK/mr_tau${TAU}_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
+#OUTPUT_DIR="$OUT_DIR/$TASK/mrhisdeswap_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
+OUTPUT_DIR="$OUT_DIR/$TASK/isfo0.1k_tau${TAU}_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
 
-#  --SDE "precalc" \
 mkdir -p $OUTPUT_DIR
+#  --SDE "precalc" \
 python $REPO/code/run_tag.py \
   --do_train \
   --do_eval \

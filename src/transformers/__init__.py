@@ -251,7 +251,10 @@ _import_structure = {
     "training_args_seq2seq": ["Seq2SeqTrainingArguments"],
     "training_args_tf": ["TFTrainingArguments"],
     "utils": ["logging"],
+    # SDE tokenizers
+    "tokenization_sde_word_fixed": ["SDEWordFixedTokenizer"]
 }
+
 
 # sentencepiece-backed objects
 if is_sentencepiece_available():
@@ -844,6 +847,7 @@ if is_torch_available():
         "get_scheduler",
     ]
     _import_structure["trainer"] = ["Trainer"]
+    _import_structure["trainer_meta"] = ["TrainerMeta", "TrainerMetaGradMask"]
     _import_structure["trainer_pt_utils"] = ["torch_distributed_zero_first"]
     _import_structure["trainer_seq2seq"] = ["Seq2SeqTrainer"]
 else:
@@ -1385,6 +1389,7 @@ if TYPE_CHECKING:
         TensorType,
         TokenSpan,
     )
+    from .tokenization_sde_word_fixed import SDEWordFixedTokenizer
 
     # Trainer
     from .trainer_callback import (
@@ -1901,6 +1906,8 @@ if TYPE_CHECKING:
 
         # Trainer
         from .trainer import Trainer
+        from .trainer_meta import TrainerMeta
+        from .trainer_meta import TrainerMetaGradMask
         from .trainer_pt_utils import torch_distributed_zero_first
         from .trainer_seq2seq import Seq2SeqTrainer
     else:

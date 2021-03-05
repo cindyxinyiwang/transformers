@@ -40,10 +40,11 @@ from transformers import (
     DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
+    TrainerMeta,
+    TrainerMetaGradMask,
     TrainingArguments,
     set_seed,
     XLMRobertaTokenizer,
-    SDEWordFixedTokenizer,
     precalcSDE,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
@@ -106,14 +107,6 @@ class ModelArguments:
         default=None,
         metadata={"help": "The directory to load tokenizer vocab file."},
     )
-    tokenizer_file: str = field(
-        default=None,
-        metadata={"help": "The vocab file for sde tokenizer."},
-    )
-    sde_tokenizer_type: str = field(
-        default="word_fixed",
-        metadata={"help": "[word_fixed|word]."},
-    )
     max_position_embeddings: int = field(
         default=384,
     )
@@ -140,6 +133,9 @@ class ModelArguments:
     )
     sde_type: str = field(
         default=None,
+    )
+    grad_mask: bool = field(
+        default=False,
     )
 
 
@@ -206,6 +202,9 @@ class DataTrainingArguments:
             "help": "Whether to pad all samples to `max_seq_length`. "
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
+    )
+    augment_model_path: str = field(
+        default=None, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
 
     def __post_init__(self):
@@ -298,6 +297,8 @@ def main():
         data_files = {}
         if data_args.train_file is not None:
             data_files["train"] = data_args.train_file
+        if data_args.meta_train_file is not None:
+            data_files["meta_train"] = data_args.meta_train_file
         if data_args.validation_file is not None:
             data_files["validation"] = data_args.validation_file
         extension = data_args.train_file.split(".")[-1]
@@ -320,12 +321,6 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     elif model_args.tokenizer_dir:
         tokenizer = XLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
-    elif model_args.tokenizer_file:
-        # using SDE tokenizer
-        if model_args.sde_tokenizer_type == "word_fixed":
-            tokenizer = SDEWordFixedTokenizer(vocab_file=model_args.tokenizer_file)
-        else:
-            raise ValueError("SDE tokenizer type {} not supported.".format(model_args.tokenizer_type))
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -384,7 +379,7 @@ def main():
         )
         if not data_args.self_aug:
             pretrained_model = AutoModelForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
+                model_args.model_name_or_path if data_args.augment_model_path is None else data_args.augment_model_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
@@ -501,16 +496,45 @@ def main():
     # Data collator
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
+    if training_args.tau > 0:
+        augment_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
+    else:
+        augment_data_collator = None
 
     # Initialize our Trainer
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-    )
+    if data_args.meta_train_file is not None:
+        if model_args.grad_mask:
+            trainer = TrainerMetaGradMask(
+                model=model,
+                args=training_args,
+                train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+                meta_train_dataset=tokenized_datasets["meta_train"],
+                eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                augment_data_collator=augment_data_collator,
+            )
+        else:
+            trainer = TrainerMeta(
+                model=model,
+                args=training_args,
+                train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+                meta_train_dataset=tokenized_datasets["meta_train"],
+                eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                augment_data_collator=augment_data_collator,
+            )
+    else:
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+            eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+            tokenizer=tokenizer,
+            data_collator=data_collator,
+            augment_data_collator=augment_data_collator,
+        )
 
     # Training
     if training_args.do_train:
