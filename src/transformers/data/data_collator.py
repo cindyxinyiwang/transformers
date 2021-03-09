@@ -297,6 +297,91 @@ class DataCollatorForSeq2Seq:
 
 
 @dataclass
+class SDEDataCollatorForLanguageModeling:
+    """
+    Data collator used for language modeling. Inputs are dynamically padded to the maximum length of a batch if they
+    are not all of the same length.
+
+    Args:
+        tokenizer (:class:`~transformers.PreTrainedTokenizer` or :class:`~transformers.PreTrainedTokenizerFast`):
+            The tokenizer used for encoding the data.
+        mlm (:obj:`bool`, `optional`, defaults to :obj:`True`):
+            Whether or not to use masked language modeling. If set to :obj:`False`, the labels are the same as the
+            inputs with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for
+            non-masked tokens and the value to predict for the masked token.
+        mlm_probability (:obj:`float`, `optional`, defaults to 0.15):
+            The probability with which to (randomly) mask tokens in the input, when :obj:`mlm` is set to :obj:`True`.
+
+    .. note::
+
+        For best performance, this data collator should be used with a dataset having items that are dictionaries or
+        BatchEncoding, with the :obj:`"special_tokens_mask"` key, as returned by a
+        :class:`~transformers.PreTrainedTokenizer` or a :class:`~transformers.PreTrainedTokenizerFast` with the
+        argument :obj:`return_special_tokens_mask=True`.
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    mlm: bool = True
+    mlm_probability: float = 0.15
+    tau: float = 0
+    topk: float = 0
+    model: torch.nn.Module = None
+
+    def __post_init__(self):
+        if self.mlm and self.tokenizer.mask_token is None:
+            raise ValueError(
+                "This tokenizer does not have a mask token which is necessary for masked language modeling. "
+                "You should pass `mlm=False` to train on causal language modeling instead."
+            )
+        if self.model is not None:
+            self.model.eval()
+
+    def __call__(
+        self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]
+    ) -> Dict[str, torch.Tensor]:
+        # Handle dict or lists with proper padding and conversion to tensor.
+        #print(len(examples))
+        #print(examples[0].keys())
+        #print(examples[0]["input_ids"])
+        #print(examples)
+        #exit(0)
+        # If special token mask has been preprocessed, pop it from the dict.
+        batch = self.tokenizer.pad(examples, return_tensors="pt")
+        special_tokens_mask = batch.pop("special_tokens_mask")
+        batch["indices_replaced"] = self.mask_tokens(
+            special_tokens_mask=special_tokens_mask
+        )
+        #print(batch["input_ids"])
+        return batch
+
+    def mask_tokens(
+        self, special_tokens_mask: torch.Tensor = None
+    ) -> torch.Tensor:
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        """
+        # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
+        probability_matrix = torch.full(special_tokens_mask.shape, self.mlm_probability)
+        special_tokens_mask = special_tokens_mask.bool()
+
+        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        #labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        #indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+        indices_replaced = torch.bernoulli(torch.full(special_tokens_mask.shape, 0.9)).bool() & masked_indices
+
+        # 10% of the time, we replace masked input tokens with random word
+        #indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+        #random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
+        #inputs[indices_random] = random_words[indices_random]
+
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return indices_replaced
+
+
+@dataclass
 class DataCollatorForLanguageModeling:
     """
     Data collator used for language modeling. Inputs are dynamically padded to the maximum length of a batch if they
@@ -339,6 +424,11 @@ class DataCollatorForLanguageModeling:
     def __call__(
         self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]
     ) -> Dict[str, torch.Tensor]:
+        #print(len(examples))
+        #print(examples[0].keys())
+        #print(examples[0]["input_ids"])
+        #print(examples)
+        #exit(0)
         # Handle dict or lists with proper padding and conversion to tensor.
         if isinstance(examples[0], (dict, BatchEncoding)):
             batch = self.tokenizer.pad(examples, return_tensors="pt")

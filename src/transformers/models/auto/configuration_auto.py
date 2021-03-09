@@ -68,6 +68,7 @@ from ..xlm_prophetnet.configuration_xlm_prophetnet import (
 )
 from ..xlm_roberta.configuration_xlm_roberta import XLM_ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMRobertaConfig
 from ..xlnet.configuration_xlnet import XLNET_PRETRAINED_CONFIG_ARCHIVE_MAP, XLNetConfig
+from ..sde_xlm_roberta.configuration_sde_xlm_roberta import SDEXLMRobertaConfig
 
 
 ALL_PRETRAINED_CONFIG_ARCHIVE_MAP = dict(
@@ -162,6 +163,7 @@ CONFIG_MAPPING = OrderedDict(
         ("layoutlm", LayoutLMConfig),
         ("rag", RagConfig),
         ("tapas", TapasConfig),
+        ("sde-xlm-roberta", SDEXLMRobertaConfig),
     ]
 )
 
@@ -212,6 +214,7 @@ MODEL_NAMES_MAPPING = OrderedDict(
         ("mt5", "mT5"),
         ("mpnet", "MPNet"),
         ("tapas", "TAPAS"),
+        ("sde-xlm-roberta", "SDE-XLM-RoBERTa"),
     ]
 )
 

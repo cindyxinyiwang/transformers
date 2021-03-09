@@ -260,6 +260,7 @@ class BatchEncoding(UserDict):
         tensor_type: Union[None, str, TensorType] = None,
         prepend_batch_axis: bool = False,
         n_sequences: Optional[int] = None,
+        char_vsize: Optional[int] = 0,
     ):
         super().__init__(data)
 
@@ -273,7 +274,7 @@ class BatchEncoding(UserDict):
 
         self._n_sequences = n_sequences
 
-        self.convert_to_tensors(tensor_type=tensor_type, prepend_batch_axis=prepend_batch_axis)
+        self.convert_to_tensors(tensor_type=tensor_type, prepend_batch_axis=prepend_batch_axis, char_vsize=char_vsize)
 
     @property
     def n_sequences(self) -> Optional[int]:
@@ -709,7 +710,7 @@ class BatchEncoding(UserDict):
         return self._encodings[batch_index].char_to_word(char_index, sequence_index)
 
     def convert_to_tensors(
-        self, tensor_type: Optional[Union[str, TensorType]] = None, prepend_batch_axis: bool = False
+            self, tensor_type: Optional[Union[str, TensorType]] = None, prepend_batch_axis: bool = False, char_vsize: int = 0
     ):
         """
         Convert the inner content to tensors.
@@ -768,16 +769,35 @@ class BatchEncoding(UserDict):
                     value = [value]
 
                 if not is_tensor(value):
-                    tensor = as_tensor(value)
+                    # convert to sparse tensor if detected as sde k,v format
+                    if type(value[0][0]) == list:
+                        # value[i] is a list of [keys, vals]
+                        # value = [example1, example2...]; example1 = [word1, word2...]; word1 = [[keys], [vals]] 
+                        tensor = []
+                        max_len = len(value[0])
+                        for example in value:
+                            coos = [[], []]
+                            vals = []
+                            for i, word in enumerate(example):
+                                assert len(word[0]) == len(word[1])
+                                coos[0].extend([i for _ in range(len(word[0]))])
+                                coos[1].extend(word[0])
+                                vals.extend(word[1])
+                            #sent_sparse = torch.sparse_coo_tensor(coos, vals, (max_len, char_vsize))
+                            #tensor.append(sent_sparse)
+                            tensor.append([coos, vals])
+                        self[key] = tensor
+                    else:
+                        tensor = as_tensor(value)
 
-                    # Removing this for now in favor of controlling the shape with `prepend_batch_axis`
-                    # # at-least2d
-                    # if tensor.ndim > 2:
-                    #     tensor = tensor.squeeze(0)
-                    # elif tensor.ndim < 2:
-                    #     tensor = tensor[None, :]
+                        # Removing this for now in favor of controlling the shape with `prepend_batch_axis`
+                        # # at-least2d
+                        # if tensor.ndim > 2:
+                        #     tensor = tensor.squeeze(0)
+                        # elif tensor.ndim < 2:
+                        #     tensor = tensor[None, :]
 
-                    self[key] = tensor
+                        self[key] = tensor
             except:  # noqa E722
                 if key == "overflowing_tokens":
                     raise ValueError(
