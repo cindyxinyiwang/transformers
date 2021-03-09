@@ -337,13 +337,17 @@ class SDEFull(nn.Module):
     def forward(self, x, max_len, lang_pair=None):
         # x: [batch_size, [coo, vals]]
         # BOW
-        bow_embs = []
-        for sparse_data in x:
-            #sent_sparse = torch.sparse_coo_tensor(coos, vals, (max_len, char_vsize))
-            emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)
-            emb = torch.tanh(self.ngram_proj(emb.float()))
-            bow_embs.append(emb)
-        ngram_weight = torch.stack(bow_embs, dim=0)
+        if type(x) == list:
+            bow_embs = []
+            for sparse_data in x:
+                #sent_sparse = torch.sparse_coo_tensor(coos, vals, (max_len, char_vsize))
+                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)
+                emb = torch.tanh(self.ngram_proj(emb.float()))
+                bow_embs.append(emb)
+            ngram_weight = torch.stack(bow_embs, dim=0)
+        else:
+            ngram_weight = torch.tanh(self.ngram_proj(x.to_dense().float()))
+
         # lang specific
         lang_emb = ngram_weight
         #lang_emb = self.language_transformations[lang_pair](ngram_weight)  # N_ng * dim
