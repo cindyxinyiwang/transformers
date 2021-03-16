@@ -145,6 +145,14 @@ class ModelArguments:
     sde_type: str = field(
         default=None,
     )
+    sde_ave: bool = field(
+        default=False,
+    )
+    sde_selfnorm_w: float = field(
+        default=0,
+    )
+
+
 
 
 
@@ -454,8 +462,6 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
-        "sde_embed": model_args.sde_type,
-        "tie_word_embeddings": model_args.tie_word_embeddings,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -472,6 +478,8 @@ def main():
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
             "sde_embed": model_args.sde_type,
+            "sde_ave": model_args.sde_ave,
+            "sde_selfnorm_w": model_args.sde_selfnorm_w,
             "tie_word_embeddings": model_args.tie_word_embeddings,
         }
         #    "sde_embed": model_args.SDE is not None,

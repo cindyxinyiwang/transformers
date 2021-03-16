@@ -513,7 +513,7 @@ class Trainer:
             raise ValueError("Trainer: training requires a train_dataset.")
         train_sampler = self._get_train_sampler()
 
-        return DataLoader(
+        data_loader = DataLoader(
             self.train_dataset,
             batch_size=self.args.train_batch_size,
             sampler=train_sampler,
@@ -522,6 +522,7 @@ class Trainer:
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
+        return data_loader
 
     def _get_eval_sampler(self, eval_dataset: Dataset) -> Optional[torch.utils.data.sampler.Sampler]:
         if is_torch_tpu_available():
@@ -819,6 +820,13 @@ class Trainer:
             if self.place_model_on_device:
                 self.model = self.model.to(self.args.device)
             self.model_wrapped = self.model
+        # Train!
+        if is_torch_tpu_available():
+            world_size = xm.xrt_world_size()
+        elif self.args.local_rank != -1:
+            world_size = dist.get_world_size()
+        else:
+            world_size = 1
 
         # Keeping track whether we can can len() on the dataset or not
         train_dataset_is_sized = isinstance(self.train_dataset, collections.abc.Sized)
@@ -831,7 +839,7 @@ class Trainer:
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         if train_dataset_is_sized:
-            num_update_steps_per_epoch = len(train_dataloader) // self.args.gradient_accumulation_steps
+            num_update_steps_per_epoch = len(train_dataloader) // (self.args.gradient_accumulation_steps)
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             if self.args.max_steps > 0:
                 max_steps = self.args.max_steps
@@ -872,15 +880,6 @@ class Trainer:
         # important: at this point:
         # self.model         is the Transformers Model
         # self.model_wrapped is DDP(Transformers Model), Deepspeed(Transformers Model), etc.
-
-        # Train!
-        if is_torch_tpu_available():
-            world_size = xm.xrt_world_size()
-        elif self.args.local_rank != -1:
-            world_size = dist.get_world_size()
-        else:
-            world_size = 1
-
         total_train_batch_size = self.args.train_batch_size * self.args.gradient_accumulation_steps * world_size
         num_examples = (
             self.num_examples(train_dataloader)

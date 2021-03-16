@@ -340,13 +340,26 @@ class SDEFull(nn.Module):
         if type(x) == list:
             bow_embs = []
             for sparse_data in x:
-                #sent_sparse = torch.sparse_coo_tensor(coos, vals, (max_len, char_vsize))
-                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)
-                emb = torch.tanh(self.ngram_proj(emb.float()))
+                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to(self.ngram_proj.weight.device)
                 bow_embs.append(emb)
-            ngram_weight = torch.stack(bow_embs, dim=0)
+            bow_embs = torch.stack(bow_embs, dim=0)
+            ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense().float()))
+            #bow_embs = []
+            #for sparse_data in x:
+            #    emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)
+            #    emb = torch.tanh(self.ngram_proj(emb.float()))
+            #    #emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device).float()
+            #    #if self.config.sde_ave:
+            #    #    emb = emb / emb.sum(dim=-1, keepdim=True) 
+            #    #emb = torch.tanh(self.ngram_proj(emb))
+            #    bow_embs.append(emb)
+            #ngram_weight = torch.stack(bow_embs, dim=0)
         else:
             ngram_weight = torch.tanh(self.ngram_proj(x.to_dense().float()))
+            #emb = x.to_dense().float()
+            #if self.config.sde_ave:
+            #    emb = emb / emb.sum(dim=-1, keepdim=True) 
+            #ngram_weight = torch.tanh(self.ngram_proj(emb))
 
         # lang specific
         lang_emb = ngram_weight

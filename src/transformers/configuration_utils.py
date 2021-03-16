@@ -244,6 +244,8 @@ class PretrainedConfig(object):
 
         self.decoder_start_token_id = kwargs.pop("decoder_start_token_id", None)
         self.sde_embed = kwargs.pop("sde_embed", False)
+        self.sde_ave = kwargs.pop("sde_ave", False)
+        self.sde_selfnorm_w = kwargs.pop("sde_selfnorm_w", 0)
 
         # task specific arguments
         self.task_specific_params = kwargs.pop("task_specific_params", None)
