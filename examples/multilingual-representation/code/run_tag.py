@@ -777,14 +777,15 @@ def main():
 
   if args.do_predict_train and args.local_rank in [-1, 0]:
     logger.info("Loading the best checkpoint from {}\n".format(best_checkpoint))
-    tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-    model = model_class.from_pretrained(best_checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case, use_fast=False)
+    model = AutoModelForTokenClassification.from_pretrained(best_checkpoint, sde_embedding=sde_embedding)
     model.to(args.device)
 
     output_test_results_file = os.path.join(args.output_dir, "test_results.txt")
     with open(output_test_results_file, "a") as result_writer:
       for lang in args.predict_langs.split(','):
-        if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format(args.model_name_or_path))):
+        #if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format(args.model_name_or_path))):
+        if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format("bert-base-multilingual-cased"))):
           logger.info("Language {} does not exist".format(lang))
           continue
         result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="train", lang=lang, lang2id=lang2id)
