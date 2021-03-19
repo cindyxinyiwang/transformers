@@ -350,8 +350,22 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
                 k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
+            # convert input ids for sde
+            if result["input_ids"] and type(result["input_ids"][0][0]) == list:
+                input_coos = []
+                for input_example in result["input_ids"]:
+                    coos = [[], []]
+                    vals = []
+                    for i, word in enumerate(input_example):
+                        assert len(word[0]) == len(word[1])
+                        coos[0].extend([i for _ in range(len(word[0]))])
+                        coos[1].extend(word[0])
+                        vals.extend(word[1])
+                    #input_coos.append([coos, vals])
+                    input_coos.append({"coos": coos, "vals":vals})
+                # each item is an example for the sentence
+                result["input_ids"] = input_coos
             return result
-
         # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a
         # remainder for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value
         # might be slower to preprocess.
@@ -364,6 +378,7 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
             num_proc=data_args.preprocessing_num_workers,
             load_from_cache_file=not data_args.overwrite_cache,
         )
+
 
     return tokenized_datasets
 

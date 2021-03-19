@@ -345,6 +345,8 @@ class SDEDataCollatorForLanguageModeling:
         #print(examples[0]["input_ids"])
         #print(examples)
         #exit(0)
+        for e in examples:
+            e["input_ids"] = [e["input_ids"]["coos"], e["input_ids"]["vals"] ]
         # If special token mask has been preprocessed, pop it from the dict.
         batch = self.tokenizer.pad(examples, return_tensors="pt")
         special_tokens_mask = batch.pop("special_tokens_mask")

@@ -340,10 +340,11 @@ class SDEFull(nn.Module):
         if type(x) == list:
             bow_embs = []
             for sparse_data in x:
-                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to(self.ngram_proj.weight.device)
+                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize), device=self.ngram_proj.weight.device, dtype=self.ngram_proj.weight.dtype)
                 bow_embs.append(emb)
             bow_embs = torch.stack(bow_embs, dim=0)
-            ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense().float()))
+            #ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense().float()))
+            ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense()))
             #bow_embs = []
             #for sparse_data in x:
             #    emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)

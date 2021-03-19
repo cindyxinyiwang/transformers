@@ -1048,8 +1048,12 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         kwargs (:obj:`Dict[str, any]`, optional, defaults to `{}`):
             Used to hide legacy arguments that have been deprecated.
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        #start = torch.cuda.Event(enable_timing=True)
+        #end_encode = torch.cuda.Event(enable_timing=True)
+        #end_loss = torch.cuda.Event(enable_timing=True)
 
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        #start.record()
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
@@ -1063,6 +1067,7 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        #end_encode.record()
         sequence_output = outputs[0]
         if self.sde_embed:
             sde_embed = self.get_input_embeddings().weight
@@ -1074,6 +1079,12 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        #end_loss.record()
+        #torch.cuda.synchronize()
+        #print(start.elapsed_time(end_encode))
+        #print(end_encode.elapsed_time(end_loss))
+        #exit(0)
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]

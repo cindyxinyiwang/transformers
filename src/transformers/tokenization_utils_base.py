@@ -773,33 +773,20 @@ class BatchEncoding(UserDict):
                     if type(value[0][0]) == list:
                         # value[i] is a list of [keys, vals]
                         # value = [example1, example2...]; example1 = [word1, word2...]; word1 = [[keys], [vals]] 
-                        tensor = []
-                        max_len = len(value[0])
-                        for example in value:
-                            coos = [[], []]
-                            vals = []
-                            for i, word in enumerate(example):
-                                assert len(word[0]) == len(word[1])
-                                coos[0].extend([i for _ in range(len(word[0]))])
-                                coos[1].extend(word[0])
-                                vals.extend(word[1])
-                            #sent_sparse = torch.sparse_coo_tensor(coos, vals, (max_len, char_vsize))
-                            #tensor.append(sent_sparse)
-                            tensor.append([coos, vals])
-                        self[key] = tensor
-                        #bsize = len(value)
+                        #tensor = []
                         #max_len = len(value[0])
-                        #coos = [[], [], []]
-                        #vals = []
-                        #for ei, example in enumerate(value):
+                        #for example in value:
+                        #    coos = [[], []]
+                        #    vals = []
                         #    for i, word in enumerate(example):
                         #        assert len(word[0]) == len(word[1])
-                        #        coos[0].extend([ei for _ in range(len(word[0]))])
-                        #        coos[1].extend([i for _ in range(len(word[0]))])
-                        #        coos[2].extend(word[0])
+                        #        coos[0].extend([i for _ in range(len(word[0]))])
+                        #        coos[1].extend(word[0])
                         #        vals.extend(word[1])
-                        #sent_sparse = torch.sparse_coo_tensor(coos, vals, (bsize, max_len, char_vsize))
-                        #self[key] = sent_sparse.to_dense()
+                        #    tensor.append([coos, vals])
+                        #self[key] = tensor
+                        #print(value)
+                        self[key] = value
                     else:
                         tensor = as_tensor(value)
 

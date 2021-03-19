@@ -164,23 +164,31 @@ class SDEXLMRobertaForMaskedLM(RobertaPreTrainedModel):
         kwargs (:obj:`Dict[str, any]`, optional, defaults to `{}`):
             Used to hide legacy arguments that have been deprecated.
         """
+        #start = torch.cuda.Event(enable_timing=True)
+        #end_encode = torch.cuda.Event(enable_timing=True)
+        #end_loss = torch.cuda.Event(enable_timing=True)
+
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         max_len = indices_replaced.size(1)
+        #start.record()
         embeds = self.roberta.get_input_embeddings()(input_ids, max_len)
-        inputs_embeds = embeds.clone()
-        inputs_embeds[indices_replaced, :] = self.roberta.get_input_embeddings().mask_embedding()
+        input_embeds = embeds.clone()
+        input_embeds[indices_replaced, :] = self.roberta.get_input_embeddings().mask_embedding().to(dtype=embeds.dtype)
         outputs = self.roberta(
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
+            inputs_embeds=input_embeds,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        #end_encode.record()
+
         sequence_output = outputs[0]
         # bsize, len, NCE_vsize
         prediction_scores = self.lm_head(sequence_output, sde_embeds=embeds)
@@ -198,6 +206,13 @@ class SDEXLMRobertaForMaskedLM(RobertaPreTrainedModel):
         #print(masked_lm_loss)
         #print(labels)
         #exit(0)
+
+        #end_loss.record()
+        #torch.cuda.synchronize()
+        #print(start.elapsed_time(end_encode))
+        #print(end_encode.elapsed_time(end_loss))
+        #exit(0)
+
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
             return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output

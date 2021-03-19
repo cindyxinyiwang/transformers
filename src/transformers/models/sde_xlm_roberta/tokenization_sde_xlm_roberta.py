@@ -271,14 +271,22 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
 
     def _token_to_ngram(self, token):
         """ return: key: charngram id; value: count of this ngram """
+        if token == self.bos_token: return self.bos_token_charkv
+        if token == self.eos_token: return self.eos_token_charkv
+        if token == self.sep_token: return self.sep_token_charkv
+        if token == self.cls_token: return self.cls_token_charkv
+        if token == self.unk_token: return self.unk_token_charkv
+        if token == self.pad_token: return self.pad_token_charkv
+        if token == self.mask_token: return self.mask_token_charkv
+
         char_kv = {}
         for i in range(len(token)):
             for j in range(i+1, min(i+self.n, len(token))+1):
                 char_ngram = token[i:j]
                 char_id = self._charngram_to_id(char_ngram)
-                #print(char_ngram)
-                #print(char_id)
-                char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                #char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                if char_id != self.unk_token_id:
+                    char_kv[char_id] = char_kv.get(char_id, 0) + 1
         #print(char_kv)
         #exit(0)
         # convert to k, v list
