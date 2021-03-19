@@ -284,9 +284,9 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
             for j in range(i+1, min(i+self.n, len(token))+1):
                 char_ngram = token[i:j]
                 char_id = self._charngram_to_id(char_ngram)
-                #char_kv[char_id] = char_kv.get(char_id, 0) + 1
-                if char_id != self.unk_token_id:
-                    char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                #if char_id != self.unk_token_id:
+                #    char_kv[char_id] = char_kv.get(char_id, 0) + 1
         #print(char_kv)
         #exit(0)
         # convert to k, v list

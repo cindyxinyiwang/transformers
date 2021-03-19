@@ -199,10 +199,12 @@ class SDEXLMRobertaForMaskedLM(RobertaPreTrainedModel):
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, nce_vsize), labels.view(-1))
-        if self.config.sde_selfnorm_w > 0:
-            selfnorm_loss = torch.nn.functional.log_softmax(prediction_scores, dim=-1)
-            selfnorm_loss = selfnorm_loss**2 / (bsize*max_len)
-            masked_lm_loss = masked_lm_loss + self.config.sde_selfnorm_w * selfnorm_loss.sum()
+        nwords = indices_replaced.int().sum()
+        if self.config.sde_selfnorm_w > 0 and nwords > 0:
+            selfnorm_loss = torch.logsumexp(prediction_scores, dim=-1)
+            selfnorm_loss = selfnorm_loss.masked_fill(~indices_replaced, 0.)
+            selfnorm_loss = (selfnorm_loss / nwords).sum()
+            masked_lm_loss = masked_lm_loss + self.config.sde_selfnorm_w * selfnorm_loss
         #print(masked_lm_loss)
         #print(labels)
         #exit(0)

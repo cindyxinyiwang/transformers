@@ -1,9 +1,9 @@
 
-INPUT=data/raw/hiwiki-latest-pages-articles.txt,data/raw/mrwiki-latest-pages-articles.txt
-VSIZE=32000
-MNAME=data/mrhi_model/sentencepiece.bpe
+INPUT=mrhi_model/mrhiwiki.train.txt
+VSIZE=64000
+MNAME=mrhi_model/64k/sentencepiece.bpe
 
-spm_train --input=$INPUT \
+python spm.py --input=$INPUT \
    --model_prefix=$MNAME \
    --vocab_size=$VSIZE --character_coverage=1.0 --model_type=unigram
 
