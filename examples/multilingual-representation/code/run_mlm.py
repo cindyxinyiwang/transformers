@@ -563,6 +563,7 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        log_file=model_args.log_file,
     )
 
     # Training

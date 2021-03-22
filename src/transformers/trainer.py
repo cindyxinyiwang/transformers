@@ -101,6 +101,7 @@ from .trainer_utils import (
 )
 from .training_args import ParallelMode, TrainingArguments
 from .utils import logging
+#import logging
 from .aug_utils import switchout, mlm_switch_tokens
 
 
@@ -236,6 +237,7 @@ class Trainer:
         callbacks: Optional[List[TrainerCallback]] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         augment_data_collator: Optional[DataCollator] = None,
+        log_file: Optional[str] = None,
     ):
         if args is None:
             output_dir = "tmp_trainer"
@@ -247,6 +249,8 @@ class Trainer:
         self.hp_name = None
         self.deepspeed = None
         self.is_in_train = False
+
+        logging.set_logfile(log_file)
 
         # memory metrics - must set up as early as possible
         #self._memory_tracker = TrainerMemoryTracker(self.args.skip_memory_metrics)
@@ -1121,7 +1125,6 @@ class Trainer:
                 if version.parse(torch.__version__) >= version.parse("1.4")
                 else self.lr_scheduler.get_lr()[0]
             )
-            logger.info("  loss={} lr={}".format(logs["loss"], logs["learning_rate"]))
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
 
@@ -1333,6 +1336,7 @@ class Trainer:
 
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
+        logger.info(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
 
     def metrics_format(self, metrics: Dict[str, float]) -> Dict[str, float]:
