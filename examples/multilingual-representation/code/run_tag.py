@@ -651,6 +651,7 @@ def main():
       do_lower_case=args.do_lower_case,
       cache_dir=args.cache_dir,
       use_fast=False,
+      #bpe_ngram=config.bpe_ngram,
   )
   if args.SDE == "precalc":
     sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size, config=config)

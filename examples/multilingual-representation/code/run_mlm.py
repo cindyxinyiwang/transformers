@@ -151,6 +151,10 @@ class ModelArguments:
     sde_selfnorm_w: float = field(
         default=0,
     )
+    bpe_ngram: bool  = field(
+        default=False,
+    )
+
 
 
 
@@ -439,6 +443,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "bpe_ngram": model_args.bpe_ngram,
     }
     sde_word = False
     if model_args.tokenizer_name:
@@ -496,6 +501,7 @@ def main():
             "sde_ave": model_args.sde_ave,
             "sde_selfnorm_w": model_args.sde_selfnorm_w,
             "tie_word_embeddings": model_args.tie_word_embeddings,
+            "bpe_ngram": tokenizer.bpe_ngram,
         }
         #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)

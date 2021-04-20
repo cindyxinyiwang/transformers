@@ -118,6 +118,7 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
         unk_token="<unk>",
         pad_token="<pad>",
         mask_token="<mask>",
+        bpe_ngram=False,
         **kwargs
     ):
         # Mask token behave like a normal word, i.e. include the space before it
@@ -135,6 +136,7 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
         self.vocab_file = vocab_file
         self._load_vocab(self.vocab_file)
         self.n = n
+        self.bpe_ngram = bpe_ngram
         # keys: char_ngram ids, vals: count for each ids
         self.bos_token_charkv = [[self._charngram_to_id(bos_token)], [1]] 
         self.eos_token_charkv = [[self._charngram_to_id(eos_token)], [1]]
@@ -280,13 +282,22 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
         if token == self.mask_token: return self.mask_token_charkv
 
         char_kv = {}
-        for i in range(len(token)):
-            for j in range(i+1, min(i+self.n, len(token))+1):
-                char_ngram = token[i:j]
-                char_id = self._charngram_to_id(char_ngram)
-                char_kv[char_id] = char_kv.get(char_id, 0) + 1
-                #if char_id != self.unk_token_id:
-                #    char_kv[char_id] = char_kv.get(char_id, 0) + 1
+        if self.bpe_ngram:
+            for i in range(len(token)):
+                for j in range(i+1, len(token)+1):
+                    char_ngram = token[i:j]
+                    char_id = self._charngram_to_id(char_ngram)
+                    char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                    #if char_id != self.unk_token_id:
+                    #    char_kv[char_id] = char_kv.get(char_id, 0) + 1
+        else:
+            for i in range(len(token)):
+                for j in range(i+1, min(i+self.n, len(token))+1):
+                    char_ngram = token[i:j]
+                    char_id = self._charngram_to_id(char_ngram)
+                    char_kv[char_id] = char_kv.get(char_id, 0) + 1
+                    #if char_id != self.unk_token_id:
+                    #    char_kv[char_id] = char_kv.get(char_id, 0) + 1
         #print(char_kv)
         #exit(0)
         # convert to k, v list
@@ -295,7 +306,9 @@ class SDEXLMRobertaTokenizer(PreTrainedTokenizer):
 
     def _convert_token_to_id(self, token):
         """ Converts a token (str) in an id using the vocab. """
-        return self._token_to_ngram(token)
+        ngram = self._token_to_ngram(token)
+        #print(self.bpe_ngram, ngram, token)
+        return ngram
 
     def _convert_id_to_token(self, index):
         """Converts an index (integer) in a token (str) using the vocab."""

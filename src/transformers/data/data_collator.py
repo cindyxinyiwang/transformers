@@ -372,7 +372,7 @@ class SDEDataCollatorForLanguageModeling:
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         #indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
-        indices_replaced = torch.bernoulli(torch.full(special_tokens_mask.shape, 0.9)).bool() & masked_indices
+        #indices_replaced = torch.bernoulli(torch.full(special_tokens_mask.shape, 0.9)).bool() & masked_indices
 
         # 10% of the time, we replace masked input tokens with random word
         #indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
@@ -380,7 +380,7 @@ class SDEDataCollatorForLanguageModeling:
         #inputs[indices_random] = random_words[indices_random]
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
-        return indices_replaced
+        return masked_indices 
 
 
 @dataclass
