@@ -172,6 +172,8 @@ class SDEXLMRobertaForMaskedLM(RobertaPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         max_len = indices_replaced.size(1)
         #start.record()
+        #embeds, labels = self.roberta.get_input_embeddings()(input_ids, max_len, indices_replaced=indices_replaced)
+        #embeds, nce_mask = self.roberta.get_input_embeddings()(input_ids, max_len, indices_replaced=indices_replaced)
         embeds = self.roberta.get_input_embeddings()(input_ids, max_len)
         input_embeds = embeds.clone()
         input_embeds[indices_replaced, :] = self.roberta.get_input_embeddings().mask_embedding().to(dtype=embeds.dtype)
@@ -191,14 +193,23 @@ class SDEXLMRobertaForMaskedLM(RobertaPreTrainedModel):
 
         sequence_output = outputs[0]
         # bsize, len, NCE_vsize
-        prediction_scores = self.lm_head(sequence_output, sde_embeds=embeds)
-        bsize, max_len, nce_vsize = prediction_scores.shape
         masked_lm_loss = None
-        labels = torch.arange(nce_vsize).view(bsize, max_len).to(prediction_scores.device)
-        labels[~indices_replaced] = -100
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, nce_vsize), labels.view(-1))
+            prediction_scores = self.lm_head(sequence_output, sde_embeds=self.roberta.get_input_embeddings().ngram_proj.weight)
+            bsize, max_len, vsize = prediction_scores.shape
+            prediction_scores = prediction_scores.view(-1, vsize)[indices_replaced.view(-1), :]
+            prediction_scores = torch.nn.functional.softmax(prediction_scores, dim=-1)
+            loss_fct = torch.nn.BCELoss(reduction="sum")
+            masked_lm_loss = loss_fct(prediction_scores, labels.float()) / indices_replaced.float().sum()
+        else:
+            prediction_scores = self.lm_head(sequence_output, sde_embeds=embeds)
+            bsize, max_len, nce_vsize = prediction_scores.shape
+            #prediction_scores = prediction_scores.masked_fill(nce_mask.view(1, 1, nce_vsize), -float("inf"))
+            labels = torch.arange(nce_vsize).view(bsize, max_len).to(prediction_scores.device)
+            labels[~indices_replaced] = -100
+            if labels is not None:
+                loss_fct = CrossEntropyLoss()
+                masked_lm_loss = loss_fct(prediction_scores.view(-1, nce_vsize), labels.view(-1))
         nwords = indices_replaced.int().sum()
         if self.config.sde_selfnorm_w > 0 and nwords > 0:
             selfnorm_loss = torch.logsumexp(prediction_scores, dim=-1)
@@ -256,6 +267,7 @@ class SDERobertaLMHead(nn.Module):
 
         # sde_embed should be [NCE_vsize, hidden_size]
         x = torch.nn.functional.linear(x, sde_embeds.view(-1, sde_embeds.size(2)))
+        #x = torch.matmul(x, sde_embeds)
         return x
 
 
