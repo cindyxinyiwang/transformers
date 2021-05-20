@@ -472,6 +472,7 @@ def main():
     # Data collator
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
+    eval_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
     trainer = Trainer(
@@ -481,6 +482,7 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        eval_data_collator=eval_data_collator,
     )
 
     # Training
