@@ -501,7 +501,7 @@ def main():
             "sde_ave": model_args.sde_ave,
             "sde_selfnorm_w": model_args.sde_selfnorm_w,
             "tie_word_embeddings": model_args.tie_word_embeddings,
-            "bpe_ngram": tokenizer.bpe_ngram,
+            "bpe_ngram": tokenizer.bpe_ngram if hasattr(tokenizer, "bpe_ngram") else False,
         }
         #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
