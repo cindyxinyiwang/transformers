@@ -37,18 +37,15 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
-    SDEDataCollatorForLanguageModeling,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
+    TrainerMeta,
+    TrainerMetaGradMask,
     TrainingArguments,
     set_seed,
     XLMRobertaTokenizer,
-    SDEXLMRobertaTokenizer,
-    SDEWordFixedTokenizer,
-    SDECharNgramTokenizer,
     precalcSDE,
-    SDEFull,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 
@@ -110,14 +107,6 @@ class ModelArguments:
         default=None,
         metadata={"help": "The directory to load tokenizer vocab file."},
     )
-    tokenizer_file: str = field(
-        default=None,
-        metadata={"help": "The vocab file for sde tokenizer."},
-    )
-    sde_tokenizer_type: str = field(
-        default="word_fixed",
-        metadata={"help": "[word_fixed|word]."},
-    )
     max_position_embeddings: int = field(
         default=384,
     )
@@ -145,18 +134,9 @@ class ModelArguments:
     sde_type: str = field(
         default=None,
     )
-    sde_ave: bool = field(
+    grad_mask: bool = field(
         default=False,
     )
-    sde_selfnorm_w: float = field(
-        default=0,
-    )
-    bpe_ngram: bool  = field(
-        default=False,
-    )
-
-
-
 
 
 
@@ -223,6 +203,9 @@ class DataTrainingArguments:
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
+    augment_model_path: str = field(
+        default=None, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -235,156 +218,6 @@ class DataTrainingArguments:
                 extension = self.validation_file.split(".")[-1]
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
 
-def create_and_cache_dataset(data_args, training_args, tokenizer):
-    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub
-    #
-    # For CSV/JSON files, this script will use the column called 'text' or the first column. You can easily tweak this
-    # behavior (see below)
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    if data_args.max_seq_length is None:
-        max_seq_length = tokenizer.model_max_length
-        if max_seq_length > 1024:
-            logger.warn(
-                f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
-                "Picking 1024 instead. You can change that default value by passing --max_seq_length xxx."
-            )
-            max_seq_length = 1024
-    else:
-        if data_args.max_seq_length > tokenizer.model_max_length:
-            logger.warn(
-                f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
-                f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
-            )
-        max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
-    # download the dataset.
-    if data_args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
-        if "validation" not in datasets.keys():
-            datasets["validation"] = load_dataset(
-                data_args.dataset_name,
-                data_args.dataset_config_name,
-                split=f"train[:{data_args.validation_split_percentage}%]",
-            )
-            datasets["train"] = load_dataset(
-                data_args.dataset_name,
-                data_args.dataset_config_name,
-                split=f"train[{data_args.validation_split_percentage}%:]",
-            )
-    else:
-        data_files = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = data_args.train_file.split(".")[-1]
-        if extension == "txt":
-            extension = "text"
-        datasets = load_dataset(extension, data_files=data_files)
-    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
-
-
-    # Preprocessing the datasets.
-    # First we tokenize all the texts.
-    if training_args.do_train:
-        column_names = datasets["train"].column_names
-    else:
-        column_names = datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
-
-    #cache_file_name = "{}/cache_"
-    cache_file_name = None
-    if data_args.line_by_line:
-        # When using line_by_line, we just tokenize each nonempty line.
-        padding = "max_length" if data_args.pad_to_max_length else False
-
-        def tokenize_function(examples):
-            # Remove empty lines
-            examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
-            return tokenizer(
-                examples["text"],
-                padding=padding,
-                truncation=True,
-                max_length=max_seq_length,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
-            )
-
-        tokenized_datasets = datasets.map(
-            tokenize_function,
-            batched=True,
-            num_proc=data_args.preprocessing_num_workers,
-            remove_columns=[text_column_name],
-            load_from_cache_file=not data_args.overwrite_cache,
-        )
-    else:
-        # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
-        # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
-        # efficient when it receives the `special_tokens_mask`.
-        def tokenize_function(examples):
-            #print(examples)
-            #print(tokenizer(examples[text_column_name], return_special_tokens_mask=True))
-            #exit(0)
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
-
-        tokenized_datasets = datasets.map(
-            tokenize_function,
-            batched=True,
-            num_proc=data_args.preprocessing_num_workers,
-            remove_columns=column_names,
-            load_from_cache_file=not data_args.overwrite_cache,
-        )
-
-        # Main data processing function that will concatenate all texts from our dataset and generate chunks of
-        # max_seq_length.
-        def group_texts(examples):
-            # Concatenate all texts.
-            concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
-            total_length = len(concatenated_examples[list(examples.keys())[0]])
-            # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
-            # customize this part to your needs.
-            total_length = (total_length // max_seq_length) * max_seq_length
-            # Split by chunks of max_len.
-            result = {
-                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
-                for k, t in concatenated_examples.items()
-            }
-            # convert input ids for sde
-            if result["input_ids"] and type(result["input_ids"][0][0]) == list:
-                input_coos = []
-                for input_example in result["input_ids"]:
-                    coos = [[], []]
-                    vals = []
-                    for i, word in enumerate(input_example):
-                        assert len(word[0]) == len(word[1])
-                        coos[0].extend([i for _ in range(len(word[0]))])
-                        coos[1].extend(word[0])
-                        vals.extend(word[1])
-                    #input_coos.append([coos, vals])
-                    input_coos.append({"coos": coos, "vals":vals})
-                # each item is an example for the sentence
-                result["input_ids"] = input_coos
-            return result
-        # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a
-        # remainder for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value
-        # might be slower to preprocess.
-        #
-        # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
-        # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
-        tokenized_datasets = tokenized_datasets.map(
-            group_texts,
-            batched=True,
-            num_proc=data_args.preprocessing_num_workers,
-            load_from_cache_file=not data_args.overwrite_cache,
-        )
-
-
-    return tokenized_datasets
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -437,36 +270,57 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
+    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
+    # (the dataset will be downloaded automatically from the datasets Hub
+    #
+    # For CSV/JSON files, this script will use the column called 'text' or the first column. You can easily tweak this
+    # behavior (see below)
+    #
+    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
+    # download the dataset.
+    if data_args.dataset_name is not None:
+        # Downloading and loading a dataset from the hub.
+        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
+        if "validation" not in datasets.keys():
+            datasets["validation"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=f"train[:{data_args.validation_split_percentage}%]",
+            )
+            datasets["train"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=f"train[{data_args.validation_split_percentage}%:]",
+            )
+    else:
+        data_files = {}
+        if data_args.train_file is not None:
+            data_files["train"] = data_args.train_file
+        if data_args.meta_train_file is not None:
+            data_files["meta_train"] = data_args.meta_train_file
+        if data_args.validation_file is not None:
+            data_files["validation"] = data_args.validation_file
+        extension = data_args.train_file.split(".")[-1]
+        if extension == "txt":
+            extension = "text"
+        datasets = load_dataset(extension, data_files=data_files)
+    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
+    # https://huggingface.co/docs/datasets/loading_datasets.html.
+
     # Load pretrained model and tokenizer
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
-        "bpe_ngram": model_args.bpe_ngram,
     }
-    sde_word = False
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     elif model_args.tokenizer_dir:
-        if model_args.model_type == "xlm-roberta":
-            tokenizer = XLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
-        elif model_args.model_type == "sde-xlm-roberta":
-            logger.info("SDEXLMRobertaTokenizer")
-            tokenizer = SDEXLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
-        else:
-            raise ValueError("tokenizer type for {} not supported.".format(model_args.model_type))
-    elif model_args.tokenizer_file:
-        # using SDE tokenizer
-        if model_args.SDE == "precalc":
-            tokenizer = SDEWordFixedTokenizer(vocab_file=model_args.tokenizer_file)
-        elif model_args.SDE == "full":
-            tokenizer = SDECharNgramTokenizer(vocab_file=model_args.tokenizer_file)
-            sde_word = True
-        else:
-            raise ValueError("SDE tokenizer type {} not supported.".format(model_args.tokenizer_type))
+        tokenizer = XLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -482,6 +336,8 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "sde_embed": model_args.sde_type,
+        "tie_word_embeddings": model_args.tie_word_embeddings,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -498,10 +354,7 @@ def main():
             "num_hidden_layers": model_args.num_hidden_layers,
             "type_vocab_size": model_args.type_vocab_size,
             "sde_embed": model_args.sde_type,
-            "sde_ave": model_args.sde_ave,
-            "sde_selfnorm_w": model_args.sde_selfnorm_w,
             "tie_word_embeddings": model_args.tie_word_embeddings,
-            "bpe_ngram": tokenizer.bpe_ngram if hasattr(tokenizer, "bpe_ngram") else False,
         }
         #    "sde_embed": model_args.SDE is not None,
         config = CONFIG_MAPPING[model_args.model_type](**config_kwargs)
@@ -510,9 +363,6 @@ def main():
 
     if model_args.SDE == "precalc":
         sde_embedding = precalcSDE(tokenizer, dim=model_args.hidden_size, config=config)
-        sde_embedding.init_weight()
-    elif model_args.SDE == "full":
-        sde_embedding = SDEFull(tokenizer, dim=model_args.hidden_size, config=config)
         sde_embedding.init_weight()
     else:
         sde_embedding = None
@@ -529,7 +379,7 @@ def main():
         )
         if not data_args.self_aug:
             pretrained_model = AutoModelForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
+                model_args.model_name_or_path if data_args.augment_model_path is None else data_args.augment_model_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
@@ -551,29 +401,140 @@ def main():
         model.resize_token_embeddings(len(tokenizer))
 
     logger.info([n for (n, p) in model.named_parameters() if p.requires_grad])
+    # Preprocessing the datasets.
+    # First we tokenize all the texts.
+    if training_args.do_train:
+        column_names = datasets["train"].column_names
+    else:
+        column_names = datasets["validation"].column_names
+    text_column_name = "text" if "text" in column_names else column_names[0]
 
-    tokenized_datasets = create_and_cache_dataset(data_args, training_args, tokenizer)
+    if data_args.max_seq_length is None:
+        max_seq_length = tokenizer.model_max_length
+        if max_seq_length > 1024:
+            logger.warn(
+                f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
+                "Picking 1024 instead. You can change that default value by passing --max_seq_length xxx."
+            )
+            max_seq_length = 1024
+    else:
+        if data_args.max_seq_length > tokenizer.model_max_length:
+            logger.warn(
+                f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
+                f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
+            )
+        max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
+
+    if data_args.line_by_line:
+        # When using line_by_line, we just tokenize each nonempty line.
+        padding = "max_length" if data_args.pad_to_max_length else False
+
+        def tokenize_function(examples):
+            # Remove empty lines
+            examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
+            return tokenizer(
+                examples["text"],
+                padding=padding,
+                truncation=True,
+                max_length=max_seq_length,
+                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                # receives the `special_tokens_mask`.
+                return_special_tokens_mask=True,
+            )
+
+        tokenized_datasets = datasets.map(
+            tokenize_function,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=[text_column_name],
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
+    else:
+        # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
+        # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
+        # efficient when it receives the `special_tokens_mask`.
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+
+        tokenized_datasets = datasets.map(
+            tokenize_function,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
+
+        # Main data processing function that will concatenate all texts from our dataset and generate chunks of
+        # max_seq_length.
+        def group_texts(examples):
+            # Concatenate all texts.
+            concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
+            total_length = len(concatenated_examples[list(examples.keys())[0]])
+            # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
+            # customize this part to your needs.
+            total_length = (total_length // max_seq_length) * max_seq_length
+            # Split by chunks of max_len.
+            result = {
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                for k, t in concatenated_examples.items()
+            }
+            return result
+
+        # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a
+        # remainder for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value
+        # might be slower to preprocess.
+        #
+        # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
+        # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
+        tokenized_datasets = tokenized_datasets.map(
+            group_texts,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
+
     # Data collator
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
-    eval_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
-    if sde_word or model_args.model_type == "sde-xlm-roberta":
-        logger.info("SDEDataCollator")
-        data_collator = SDEDataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
+    if training_args.tau > 0:
+        augment_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
     else:
-        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability, tau=training_args.tau, model=pretrained_model, topk=data_args.topk)
+        augment_data_collator = None
 
     # Initialize our Trainer
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        eval_data_collator=eval_data_collator,
-        log_file=model_args.log_file,
-    )
+    if data_args.meta_train_file is not None:
+        if model_args.grad_mask:
+            trainer = TrainerMetaGradMask(
+                model=model,
+                args=training_args,
+                train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+                meta_train_dataset=tokenized_datasets["meta_train"],
+                eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                augment_data_collator=augment_data_collator,
+            )
+        else:
+            trainer = TrainerMeta(
+                model=model,
+                args=training_args,
+                train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+                meta_train_dataset=tokenized_datasets["meta_train"],
+                eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                augment_data_collator=augment_data_collator,
+            )
+    else:
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
+            eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+            tokenizer=tokenizer,
+            data_collator=data_collator,
+            augment_data_collator=augment_data_collator,
+        )
 
     # Training
     if training_args.do_train:

@@ -74,8 +74,9 @@ class RobertaEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.sde_embed = config.sde_embed
-        #if not config.sde_embed and (config.sde_embed != "cmobine"):
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.sde_combine = (config.sde_embed == "combine")
+        if (not config.sde_embed) or self.sde_combine:
+          self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
@@ -93,7 +94,6 @@ class RobertaEmbeddings(nn.Module):
         self.position_embeddings = nn.Embedding(
             config.max_position_embeddings, config.hidden_size, padding_idx=self.padding_idx
         )
-        self.sde_combine = (config.sde_embed == "combine")
 
     def forward(
         self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0
@@ -118,8 +118,8 @@ class RobertaEmbeddings(nn.Module):
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
 
-        if self.sde_embeddings is not None:
-            inputs_embeds = self.sde_embeddings(input_ids) + inputs_embeds
+        if self.sde_combine and self.sde_embeddings is not None:
+            inputs_embeds = (self.sde_embeddings(input_ids) + inputs_embeds) / 2
 
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
@@ -699,8 +699,8 @@ class RobertaModel(RobertaPreTrainedModel):
     def get_input_embeddings(self):
         return self.embeddings.word_embeddings
 
-    def set_input_embeddings(self, value, combine=True):
-        if combine or self.sde_combine:
+    def set_input_embeddings(self, value):
+        if self.sde_combine:
             self.embeddings.sde_embeddings = value
         else:
             self.embeddings.word_embeddings = value
@@ -1048,8 +1048,12 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         kwargs (:obj:`Dict[str, any]`, optional, defaults to `{}`):
             Used to hide legacy arguments that have been deprecated.
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        #start = torch.cuda.Event(enable_timing=True)
+        #end_encode = torch.cuda.Event(enable_timing=True)
+        #end_loss = torch.cuda.Event(enable_timing=True)
 
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        #start.record()
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
@@ -1063,6 +1067,7 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        #end_encode.record()
         sequence_output = outputs[0]
         if self.sde_embed:
             sde_embed = self.get_input_embeddings().weight
@@ -1074,6 +1079,12 @@ class RobertaForMaskedLM(RobertaPreTrainedModel):
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        #end_loss.record()
+        #torch.cuda.synchronize()
+        #print(start.elapsed_time(end_encode))
+        #print(end_encode.elapsed_time(end_loss))
+        #exit(0)
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
@@ -1094,16 +1105,21 @@ class RobertaLMHead(nn.Module):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
-        if not config.sde_embed or config.sde_embed == "combine":
-            self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-            self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        self.decoder.bias = self.bias
 
-            # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-            self.decoder.bias = self.bias
-        else:
-            pass
-            #self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        #if not config.sde_embed or config.sde_embed == "combine":
+        #    self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        #    self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+
+        #    # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        #    self.decoder.bias = self.bias
+        #else:
+        #    pass
+        #    #self.bias = nn.Parameter(torch.zeros(config.vocab_size))
         self.sde_embed = config.sde_embed
 
     def forward(self, features, **kwargs):
@@ -1112,13 +1128,14 @@ class RobertaLMHead(nn.Module):
         x = self.layer_norm(x)
 
         # project back to size of vocabulary with bias
-        if self.sde_embed and self.sde_embed != "combine":
-            sde_embed = kwargs.get("sde_embed")
-            #x = torch.nn.functional.linear(x, sde_embed, bias=self.bias)
-            x = torch.nn.functional.linear(x, sde_embed)
-        else:
-            x = self.decoder(x)
+        #if self.sde_embed and self.sde_embed != "combine":
+        #    sde_embed = kwargs.get("sde_embed")
+        #    #x = torch.nn.functional.linear(x, sde_embed, bias=self.bias)
+        #    x = torch.nn.functional.linear(x, sde_embed)
+        #else:
+        #    x = self.decoder(x)
 
+        x = self.decoder(x)
         return x
 
 

@@ -17,13 +17,13 @@ REPO=$PWD
 GPU=${1:-1}
 #MODEL=${2:-bert-base-multilingual-cased}
 MODEL=${2:-xlm-roberta-base}
-DATA_DIR=${3:-"/home/xinyiw/download/"}
+DATA_DIR=${3:-"/projects/tir1/users/xinyiw1/xtreme/download/"}
 OUT_DIR=${4:-"$REPO/outputs/"}
 
-export CUDA_VISIBLE_DEVICES=$GPU
+#export CUDA_VISIBLE_DEVICES=$GPU
 TASK='panx'
-LANGS="sw"
-TRAIN_LANGS="sw"
+LANGS="is,fo,no,da"
+TRAIN_LANGS="is"
 
 NUM_EPOCHS=10
 MAX_LENGTH=128

@@ -353,7 +353,10 @@ class ModuleUtilsMixin:
         """
         token_inputs = [tensor for key, tensor in input_dict.items() if "input" in key]
         if token_inputs:
-            return sum([token_input.numel() for token_input in token_inputs])
+            if type(token_inputs[0]) == list:
+                return sum([len(token_input) for token_input in token_inputs])
+            else:
+                return sum([token_input.numel() for token_input in token_inputs])
         else:
             warnings.warn(
                 "Could not estimate the number of tokens of the input, floating-point operations will not be computed"

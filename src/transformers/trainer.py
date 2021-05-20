@@ -101,6 +101,7 @@ from .trainer_utils import (
 )
 from .training_args import ParallelMode, TrainingArguments
 from .utils import logging
+#import logging
 from .aug_utils import switchout, mlm_switch_tokens
 
 
@@ -236,6 +237,8 @@ class Trainer:
         compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
         callbacks: Optional[List[TrainerCallback]] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+        augment_data_collator: Optional[DataCollator] = None,
+        log_file: Optional[str] = None,
     ):
         if args is None:
             output_dir = "tmp_trainer"
@@ -247,6 +250,8 @@ class Trainer:
         self.hp_name = None
         self.deepspeed = None
         self.is_in_train = False
+
+        logging.set_logfile(log_file)
 
         # memory metrics - must set up as early as possible
         #self._memory_tracker = TrainerMemoryTracker(self.args.skip_memory_metrics)
@@ -283,6 +288,7 @@ class Trainer:
         default_collator = default_data_collator if tokenizer is None else DataCollatorWithPadding(tokenizer)
         self.data_collator = data_collator if data_collator is not None else default_collator
         self.eval_data_collator = eval_data_collator if eval_data_collator is not None else train_collator
+        self.augment_data_collator = augment_data_collator 
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.tokenizer = tokenizer
@@ -513,15 +519,16 @@ class Trainer:
             raise ValueError("Trainer: training requires a train_dataset.")
         train_sampler = self._get_train_sampler()
 
-        return DataLoader(
+        data_loader = DataLoader(
             self.train_dataset,
             batch_size=self.args.train_batch_size,
             sampler=train_sampler,
-            collate_fn=self.data_collator,
+            collate_fn=self.augment_data_collator if self.augment_data_collator is not None else self.data_collator,
             drop_last=self.args.dataloader_drop_last,
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
+        return data_loader
 
     def _get_eval_sampler(self, eval_dataset: Dataset) -> Optional[torch.utils.data.sampler.Sampler]:
         if is_torch_tpu_available():
@@ -819,6 +826,13 @@ class Trainer:
             if self.place_model_on_device:
                 self.model = self.model.to(self.args.device)
             self.model_wrapped = self.model
+        # Train!
+        if is_torch_tpu_available():
+            world_size = xm.xrt_world_size()
+        elif self.args.local_rank != -1:
+            world_size = dist.get_world_size()
+        else:
+            world_size = 1
 
         # Keeping track whether we can can len() on the dataset or not
         train_dataset_is_sized = isinstance(self.train_dataset, collections.abc.Sized)
@@ -831,7 +845,7 @@ class Trainer:
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         if train_dataset_is_sized:
-            num_update_steps_per_epoch = len(train_dataloader) // self.args.gradient_accumulation_steps
+            num_update_steps_per_epoch = len(train_dataloader) // (self.args.gradient_accumulation_steps)
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             if self.args.max_steps > 0:
                 max_steps = self.args.max_steps
@@ -872,15 +886,6 @@ class Trainer:
         # important: at this point:
         # self.model         is the Transformers Model
         # self.model_wrapped is DDP(Transformers Model), Deepspeed(Transformers Model), etc.
-
-        # Train!
-        if is_torch_tpu_available():
-            world_size = xm.xrt_world_size()
-        elif self.args.local_rank != -1:
-            world_size = dist.get_world_size()
-        else:
-            world_size = 1
-
         total_train_batch_size = self.args.train_batch_size * self.args.gradient_accumulation_steps * world_size
         num_examples = (
             self.num_examples(train_dataloader)
@@ -1122,7 +1127,6 @@ class Trainer:
                 if version.parse(torch.__version__) >= version.parse("1.4")
                 else self.lr_scheduler.get_lr()[0]
             )
-            logger.info("  loss={} lr={}".format(logs["loss"], logs["learning_rate"]))
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
 
@@ -1334,6 +1338,7 @@ class Trainer:
 
         output = {**logs, **{"step": self.state.global_step}}
         self.state.log_history.append(output)
+        logger.info(output)
         self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)
 
     def metrics_format(self, metrics: Dict[str, float]) -> Dict[str, float]:

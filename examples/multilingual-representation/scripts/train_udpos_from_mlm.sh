@@ -17,16 +17,16 @@ REPO=$PWD
 GPU=${1:-1}
 MODEL=${2:-bert-base-multilingual-cased}
 #MODEL=${2:-xlm-roberta-base}
-DATA_DIR=${3:-"/home/hyhieu/xinyiw/download/"}
+DATA_DIR=${3:-"/home/xinyiw/download/"}
 OUT_DIR=${4:-"$REPO/outputs/"}
 
 #MODEL=outputs/mrhi_mlm_sde_word/checkpoint-31000/
-MODEL=outputs/mrhi_mlm_2gpu/checkpoint-35000/
+MODEL=outputs/mrhi_mlm/checkpoint-35000/
 MODEL_TYPE="xlm-roberta"
 #MODEL_TYPE="sde-xlm-roberta"
 
 export CUDA_VISIBLE_DEVICES=$GPU
-TASK='panx'
+TASK='udpos'
 LANGS="mr,hi"
 TRAIN_LANGS="hi"
 
@@ -59,7 +59,7 @@ fi
 DATA_DIR=$DATA_DIR/${TASK}/${TASK}_processed_maxlen${MAX_LENGTH}/
 for SEED in 1;
 do
-OUTPUT_DIR="$OUT_DIR/$TASK/mrhi2gpu_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
+OUTPUT_DIR="$OUT_DIR/$TASK/mrhi_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
 #OUTPUT_DIR="$OUT_DIR/$TASK/mrhisde2gpu_LR${LR}-epoch${NUM_EPOCHS}-MaxLen${MAX_LENGTH}-TrainLang${TRAIN_LANGS}_bped${BPE_DROP}_s${SEED}/"
 
 mkdir -p $OUTPUT_DIR

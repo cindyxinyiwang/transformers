@@ -134,7 +134,7 @@ class SDE(nn.Module):
 
 
 class precalcSDE(nn.Module):
-    def __init__(self, tokenizer, pairs=None, ngram_pool_mode='sum', n=4, threshold=32000, dim=128, latent=0,
+    def __init__(self, tokenizer, config, pairs=None, ngram_pool_mode='mean', n=4, threshold=32000, dim=128, latent=10000,
                  do_layer_norm=False):
         super(precalcSDE, self).__init__()
         self.padding_idx = tokenizer.pad_token_id
@@ -205,15 +205,24 @@ class precalcSDE(nn.Module):
 
         emb_weight = torch.cat((self.special_emb, token_emb, self.mask_emb), dim=0)
         self.sde_weight = emb_weight
+        self.config = config
 
     def init_weight(self):
         # run weight initialization
-        nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.dim ** -0.5)
+        #if self.latent_mat is not None:
+        #    nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
+        #nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
+        #nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
+
+        nn.init.normal_(self.ngram_emb.weight, mean=0, std=self.config.initializer_range*0.5)
         if self.latent_mat is not None:
-            nn.init.normal_(self.latent_mat, mean=0, std=self.dim ** -0.5)
-        nn.init.normal_(self.special_emb, mean=0, std=self.dim ** -0.5)
-        nn.init.normal_(self.mask_emb, mean=0, std=self.dim ** -0.5)
+            nn.init.normal_(self.latent_mat, mean=0, std=self.config.initializer_range*0.5)
+        nn.init.normal_(self.special_emb, mean=0, std=self.config.initializer_range*0.5)
+        nn.init.normal_(self.mask_emb, mean=0, std=self.config.initializer_range*0.5)
         nn.init.constant_(self.special_emb[self.padding_idx], 0.0)
+
 
 
     @staticmethod
@@ -251,8 +260,8 @@ class precalcSDE(nn.Module):
 
     @property
     def weight(self):
-        return self.sde_weight
-        #return torch.nn.Parameter(self.sde_weight)
+        #return self.sde_weight
+        return torch.nn.Parameter(self.sde_weight)
 
 
 class SDENoWeight(precalcSDE):
@@ -285,5 +294,93 @@ class SDENoWeight(precalcSDE):
     def weight(self):
         raise NotImplementedError(f'{type(self).__name__} does not support getting full weight')
 
+
+
+class SDEFull(nn.Module):
+    def __init__(self, tokenizer, config, pairs=None, ngram_pool_mode='mean', n=4, threshold=32000, dim=128, latent=10000,
+                 do_layer_norm=False):
+        super(SDEFull, self).__init__()
+        self.padding_idx = tokenizer.pad_token_id
+        self.tokenizer = tokenizer
+        dictionary = list(tokenizer.get_vocab().keys())
+        self.vsize = len(dictionary)
+        self.embedding_dim = dim
+
+        self.ngram_proj = nn.Linear(self.vsize, dim, bias=False)
+        #self.language_transformations = nn.ModuleDict({
+        #    p: nn.Linear(dim, dim, bias=False) for p in pairs
+        #})
+        if latent > 0:
+            self.latent_mat = nn.Parameter(torch.empty(latent, dim))
+        else:
+            self.latent_mat = None
+        #self.special_emb = nn.Parameter(torch.empty(4, dim))
+        #self.mask_emb = nn.Parameter(torch.empty(1, dim))
+
+        if do_layer_norm:
+            self.layer_norm = LayerNorm(dim)
+        else:
+            self.layer_norm = None
+        self.config = config
+
+    def mask_embedding(self):
+        return self.ngram_proj.weight[:,self.tokenizer.mask_token_id]
+
+    def init_weight(self):
+        nn.init.normal_(self.ngram_proj.weight, mean=0, std=self.config.initializer_range*0.5)
+        if self.latent_mat is not None:
+            nn.init.normal_(self.latent_mat, mean=0, std=self.config.initializer_range*0.5)
+        nn.init.constant_(self.ngram_proj.weight[self.padding_idx], 0.0)
+        #nn.init.normal_(self.special_emb, mean=0, std=self.config.initializer_range*0.5)
+        #nn.init.normal_(self.mask_emb, mean=0, std=self.config.initializer_range*0.5)
+
+    def forward(self, x, max_len, lang_pair=None):
+        # x: [batch_size, [coo, vals]]
+        # BOW
+        if type(x) == list:
+            bow_embs = []
+            for sparse_data in x:
+                emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize), device=self.ngram_proj.weight.device, dtype=self.ngram_proj.weight.dtype)
+                bow_embs.append(emb)
+            bow_embs = torch.stack(bow_embs, dim=0)
+            #ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense().float()))
+            ngram_weight = torch.tanh(self.ngram_proj(bow_embs.to_dense()))
+            #bow_embs = []
+            #for sparse_data in x:
+            #    emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device)
+            #    emb = torch.tanh(self.ngram_proj(emb.float()))
+            #    #emb = torch.sparse_coo_tensor(sparse_data[0], sparse_data[1], (max_len, self.vsize)).to_dense().to(self.ngram_proj.weight.device).float()
+            #    #if self.config.sde_ave:
+            #    #    emb = emb / emb.sum(dim=-1, keepdim=True) 
+            #    #emb = torch.tanh(self.ngram_proj(emb))
+            #    bow_embs.append(emb)
+            #ngram_weight = torch.stack(bow_embs, dim=0)
+        else:
+            ngram_weight = torch.tanh(self.ngram_proj(x.to_dense().float()))
+            #emb = x.to_dense().float()
+            #if self.config.sde_ave:
+            #    emb = emb / emb.sum(dim=-1, keepdim=True) 
+            #ngram_weight = torch.tanh(self.ngram_proj(emb))
+
+        # lang specific
+        lang_emb = ngram_weight
+        #lang_emb = self.language_transformations[lang_pair](ngram_weight)  # N_ng * dim
+        #lang_emb = torch.tanh(lang_emb)
+        # latent
+        if self.latent_mat is not None:
+            latent_scores = torch.matmul(lang_emb, self.latent_mat.transpose(0, 1))
+            latent_distribution = torch.softmax(latent_scores, dim=-1)
+            latent_emb = torch.matmul(latent_distribution, self.latent_mat)
+            # residual connection
+            token_emb = lang_emb + latent_emb  # threshold * dim
+        else:
+            token_emb = lang_emb
+        if self.layer_norm:
+            sde_emb = self.layer_norm(sde_emb)
+        return token_emb 
+
+    @property
+    def weight(self):
+        return None
 
 

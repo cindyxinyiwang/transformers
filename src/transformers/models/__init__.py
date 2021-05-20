@@ -67,4 +67,5 @@ from . import (
     xlm,
     xlm_roberta,
     xlnet,
+    sde_xlm_roberta,
 )

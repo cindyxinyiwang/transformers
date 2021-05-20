@@ -40,7 +40,7 @@ log_levels = {
     "critical": logging.CRITICAL,
 }
 
-_default_log_level = logging.WARNING
+_default_log_level = logging.INFO
 
 
 def _get_default_logging_level():
@@ -157,6 +157,20 @@ def set_verbosity(verbosity: int) -> None:
     _get_library_root_logger().setLevel(verbosity)
 
 
+def set_logfile(filename):
+    global _default_handler
+
+    with _lock:
+        _default_handler = logging.StreamHandler()  # Set sys.stderr as stream.
+        _default_handler.flush = sys.stderr.flush
+
+        # Apply our default configuration to the library root logger.
+        library_root_logger = _get_library_root_logger()
+        library_root_logger.addHandler(logging.FileHandler(filename))
+        library_root_logger.addHandler(_default_handler)
+        library_root_logger.setLevel(_get_default_logging_level())
+        library_root_logger.propagate = False
+
 def set_verbosity_info():
     """Set the verbosity to the :obj:`INFO` level."""
     return set_verbosity(INFO)
@@ -175,7 +189,6 @@ def set_verbosity_debug():
 def set_verbosity_error():
     """Set the verbosity to the :obj:`ERROR` level."""
     return set_verbosity(ERROR)
-
 
 def disable_default_handler() -> None:
     """Disable the default handler of the HuggingFace Transformers's root logger."""

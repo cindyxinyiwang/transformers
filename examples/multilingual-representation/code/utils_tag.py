@@ -105,6 +105,7 @@ def read_examples_from_file(file_path, lang, lang2id=None):
   return examples
 
 
+
 def convert_examples_to_sde_features(examples,
                  label_list,
                  max_seq_length,
@@ -121,8 +122,7 @@ def convert_examples_to_sde_features(examples,
                  sequence_a_segment_id=0,
                  mask_padding_with_zero=True,
                  lang='en',
-                 max_ngram_size=20,
-                 bpe_segment=1):
+                 bpe_dropout=0):
   """ Loads a data file into a list of `InputBatch`s
     `cls_token_at_end` define the location of the CLS token:
       - False (Default, BERT/XLM pattern): [CLS] + A + [SEP] + B + [SEP]
@@ -140,26 +140,9 @@ def convert_examples_to_sde_features(examples,
     tokens = []
     label_ids = []
     for word, label in zip(example.words, example.labels):
-      if bpe_segment:
-        subwords = tokenizer.tokenize(word)
-        for subword in subwords:
-          if isinstance(tokenizer, XLMTokenizer):
-            print('Warning: XLMTokenizer is not supported by SDE')
-            exit(0)
-            word_tokens = tokenizer.tokenize(word, lang=lang)
-          else:
-            word_tokens = tokenizer.ngram_tokenize(subword)
-          if len(word) != 0 and len(word_tokens) == 0:
-            word_tokens = [[tokenizer.unk_token]]
-          tokens.extend(word_tokens)
-        label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(subwords) - 1))
-      else:
-        word_tokens = tokenizer.ngram_tokenize(word)
-        if len(word) != 0 and len(word_tokens) == 0:
-          word_tokens = [[tokenizer.unk_token]]
-        tokens.extend(word_tokens)
-        # Each word is a single word
-        label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
+      tokens.append(word)
+      # Use the real label id for the first token of the word, and padding ids for the remaining tokens
+      label_ids.append(label_map[label])
 
     # Account for [CLS] and [SEP] with "- 2" and with "- 3" for RoBERTa.
     special_tokens_count = 3 if sep_token_extra else 2
@@ -183,26 +166,25 @@ def convert_examples_to_sde_features(examples,
     # since the [SEP] token unambiguously separates the sequences, but it makes
     # it easier for the model to learn the concept of sequences.
 
-    tokens += [[sep_token]]
+    tokens += [sep_token]
     label_ids += [pad_token_label_id]
     if sep_token_extra:
       # roberta uses an extra separator b/w pairs of sentences
-      tokens += [[sep_token]]
+      tokens += [sep_token]
       label_ids += [pad_token_label_id]
     segment_ids = [sequence_a_segment_id] * len(tokens)
 
     if cls_token_at_end:
-      tokens += [[cls_token]]
+      tokens += [cls_token]
       label_ids += [pad_token_label_id]
       segment_ids += [cls_token_segment_id]
     else:
-      tokens = [[cls_token]] + tokens
+      tokens = [cls_token] + tokens
       label_ids = [pad_token_label_id] + label_ids
       segment_ids = [cls_token_segment_id] + segment_ids
 
-    # 2d vector sent_len x max_ngram_size
-    input_ids = tokenizer.convert_tokens_to_sde_ids(tokens, max_ngram_size)
 
+    input_ids = tokenizer.convert_tokens_to_ids(tokens)
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
     input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
@@ -210,12 +192,12 @@ def convert_examples_to_sde_features(examples,
     # Zero-pad up to the sequence length.
     padding_length = max_seq_length - len(input_ids)
     if pad_on_left:
-      input_ids = ([[pad_token]*max_ngram_size] * padding_length) + input_ids
+      input_ids = ([tokenizer.pad_token_charkv] * padding_length) + input_ids
       input_mask = ([0 if mask_padding_with_zero else 1] * padding_length) + input_mask
       segment_ids = ([pad_token_segment_id] * padding_length) + segment_ids
       label_ids = ([pad_token_label_id] * padding_length) + label_ids
     else:
-      input_ids += ([[pad_token]*max_ngram_size] * padding_length)
+      input_ids += ([tokenizer.pad_token_charkv] * padding_length)
       input_mask += ([0 if mask_padding_with_zero else 1] * padding_length)
       segment_ids += ([pad_token_segment_id] * padding_length)
       label_ids += ([pad_token_label_id] * padding_length)
@@ -250,7 +232,6 @@ def convert_examples_to_sde_features(examples,
                 label_ids=label_ids,
                 langs=langs))
   return features
-
 
 
 def convert_examples_to_features(examples,

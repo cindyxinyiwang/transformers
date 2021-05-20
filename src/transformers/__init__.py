@@ -56,7 +56,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Base objects, independent of any specific backend
 _import_structure = {
-    "sde_embedding": ["precalcSDE"],
+    "sde_embedding": ["precalcSDE", "SDEFull"],
     "configuration_utils": ["PretrainedConfig"],
     "data": [
         "DataProcessor",
@@ -204,6 +204,7 @@ _import_structure = {
     "models.xlm": ["XLM_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLMConfig", "XLMTokenizer"],
     "models.xlm_prophetnet": ["XLM_PROPHETNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLMProphetNetConfig"],
     "models.xlm_roberta": ["XLM_ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLMRobertaConfig"],
+    "models.sde_xlm_roberta": ["SDEXLMRobertaConfig"],
     "models.xlnet": ["XLNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLNetConfig"],
     "pipelines": [
         "Conversation",
@@ -251,7 +252,11 @@ _import_structure = {
     "training_args_seq2seq": ["Seq2SeqTrainingArguments"],
     "training_args_tf": ["TFTrainingArguments"],
     "utils": ["logging"],
+    # SDE tokenizers
+    "tokenization_sde_word_fixed": ["SDEWordFixedTokenizer"],
+    "tokenization_sde_char_ngram": ["SDECharNgramTokenizer"],
 }
+
 
 # sentencepiece-backed objects
 if is_sentencepiece_available():
@@ -268,6 +273,7 @@ if is_sentencepiece_available():
     _import_structure["models.t5"].append("T5Tokenizer")
     _import_structure["models.xlm_prophetnet"].append("XLMProphetNetTokenizer")
     _import_structure["models.xlm_roberta"].append("XLMRobertaTokenizer")
+    _import_structure["models.sde_xlm_roberta"].append("SDEXLMRobertaTokenizer")
     _import_structure["models.xlnet"].append("XLNetTokenizer")
 else:
     from .utils import dummy_sentencepiece_objects
@@ -329,6 +335,7 @@ if is_torch_available():
     _import_structure["data.data_collator"] = [
         "DataCollator",
         "DataCollatorForLanguageModeling",
+        "SDEDataCollatorForLanguageModeling",
         "DataCollatorForPermutationLanguageModeling",
         "DataCollatorForSeq2Seq",
         "DataCollatorForSOP",
@@ -818,6 +825,17 @@ if is_torch_available():
             "XLMRobertaModel",
         ]
     )
+    _import_structure["models.sde_xlm_roberta"].extend(
+        [
+            "SDEXLMRobertaForCausalLM",
+            "SDEXLMRobertaForMaskedLM",
+            "SDEXLMRobertaForMultipleChoice",
+            "SDEXLMRobertaForQuestionAnswering",
+            "SDEXLMRobertaForSequenceClassification",
+            "SDEXLMRobertaForTokenClassification",
+            "SDEXLMRobertaModel",
+        ]
+    )
     _import_structure["models.xlnet"].extend(
         [
             "XLNET_PRETRAINED_MODEL_ARCHIVE_LIST",
@@ -844,6 +862,7 @@ if is_torch_available():
         "get_scheduler",
     ]
     _import_structure["trainer"] = ["Trainer"]
+    _import_structure["trainer_meta"] = ["TrainerMeta", "TrainerMetaGradMask"]
     _import_structure["trainer_pt_utils"] = ["torch_distributed_zero_first"]
     _import_structure["trainer_seq2seq"] = ["Seq2SeqTrainer"]
 else:
@@ -1192,7 +1211,7 @@ else:
 
 # Direct imports for type-checking
 if TYPE_CHECKING:
-    from .sde_embedding import precalcSDE
+    from .sde_embedding import precalcSDE, SDEFull
     # Configuration
     from .configuration_utils import PretrainedConfig
 
@@ -1348,6 +1367,7 @@ if TYPE_CHECKING:
     from .models.xlm import XLM_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMConfig, XLMTokenizer
     from .models.xlm_prophetnet import XLM_PROPHETNET_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMProphetNetConfig
     from .models.xlm_roberta import XLM_ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMRobertaConfig
+    from .models.sde_xlm_roberta import  SDEXLMRobertaConfig
     from .models.xlnet import XLNET_PRETRAINED_CONFIG_ARCHIVE_MAP, XLNetConfig
 
     # Pipelines
@@ -1385,6 +1405,8 @@ if TYPE_CHECKING:
         TensorType,
         TokenSpan,
     )
+    from .tokenization_sde_word_fixed import SDEWordFixedTokenizer
+    from .tokenization_sde_char_ngram import SDECharNgramTokenizer
 
     # Trainer
     from .trainer_callback import (
@@ -1414,6 +1436,7 @@ if TYPE_CHECKING:
         from .models.t5 import T5Tokenizer
         from .models.xlm_prophetnet import XLMProphetNetTokenizer
         from .models.xlm_roberta import XLMRobertaTokenizer
+        from .models.sde_xlm_roberta import SDEXLMRobertaTokenizer
         from .models.xlnet import XLNetTokenizer
     else:
         from .utils.dummy_sentencepiece_objects import *
@@ -1464,6 +1487,7 @@ if TYPE_CHECKING:
         from .data.data_collator import (
             DataCollator,
             DataCollatorForLanguageModeling,
+            SDEDataCollatorForLanguageModeling,
             DataCollatorForPermutationLanguageModeling,
             DataCollatorForSeq2Seq,
             DataCollatorForSOP,
@@ -1873,6 +1897,15 @@ if TYPE_CHECKING:
             XLMRobertaForTokenClassification,
             XLMRobertaModel,
         )
+        from .models.sde_xlm_roberta import (
+            SDEXLMRobertaForCausalLM,
+            SDEXLMRobertaForMaskedLM,
+            SDEXLMRobertaForMultipleChoice,
+            SDEXLMRobertaForQuestionAnswering,
+            SDEXLMRobertaForSequenceClassification,
+            SDEXLMRobertaForTokenClassification,
+            SDEXLMRobertaModel,
+        )
         from .models.xlnet import (
             XLNET_PRETRAINED_MODEL_ARCHIVE_LIST,
             XLNetForMultipleChoice,
@@ -1901,6 +1934,8 @@ if TYPE_CHECKING:
 
         # Trainer
         from .trainer import Trainer
+        from .trainer_meta import TrainerMeta
+        from .trainer_meta import TrainerMetaGradMask
         from .trainer_pt_utils import torch_distributed_zero_first
         from .trainer_seq2seq import Seq2SeqTrainer
     else:

@@ -33,7 +33,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from utils_tag import convert_examples_to_features
+from utils_tag import convert_examples_to_features,convert_examples_to_sde_features
 from utils_tag import get_labels
 from utils_tag import read_examples_from_file
 
@@ -45,6 +45,7 @@ from transformers import (
   AutoModelForTokenClassification,
   AutoTokenizer,
   precalcSDE,
+  SDEFull,
 )
 #from xlm import XLMForTokenClassification
 
@@ -127,10 +128,19 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
     cur_epoch += 1
     for step, batch in enumerate(epoch_iterator):
       model.train()
+      #print(len(batch[0]))
+      #print(batch[0][0])
+      #exit(0)
       batch = tuple(t.to(args.device) for t in batch if t is not None)
-      inputs = {"input_ids": batch[0],
-            "attention_mask": batch[1],
-            "labels": batch[3]}
+      if args.model_type == "sde-xlm-roberta":
+          inputs_embeds = model.roberta.get_input_embeddings()(batch[0], max_len=args.max_seq_length)
+          inputs = {"inputs_embeds": inputs_embeds,
+                "attention_mask": batch[1],
+                "labels": batch[3]}
+      else:
+          inputs = {"input_ids": batch[0],
+                "attention_mask": batch[1],
+                "labels": batch[3]}
 
       if args.model_type != "distilbert":
         # XLM and RoBERTa don"t use segment_ids
@@ -254,9 +264,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     batch = tuple(t.to(args.device) for t in batch)
 
     with torch.no_grad():
-      inputs = {"input_ids": batch[0],
-            "attention_mask": batch[1],
-            "labels": batch[3]}
+      if args.model_type == "sde-xlm-roberta":
+          inputs_embeds = model.roberta.get_input_embeddings()(batch[0], max_len=args.max_seq_length)
+          inputs = {"inputs_embeds": inputs_embeds,
+                "attention_mask": batch[1],
+                "labels": batch[3]}
+      else:
+          inputs = {"input_ids": batch[0],
+                "attention_mask": batch[1],
+                "labels": batch[3]}
       if args.model_type != "distilbert":
         # XLM and RoBERTa don"t use segment_ids
         inputs["token_type_ids"] = batch[2] if args.model_type in ["bert", "xlnet"] else None
@@ -277,7 +293,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     else:
       preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
       out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
-
   if nb_eval_steps == 0:
     results = {k: 0 for k in ["loss", "precision", "recall", "f1"]}
   else:
@@ -292,9 +307,11 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for i in range(out_label_ids.shape[0]):
       for j in range(out_label_ids.shape[1]):
         if out_label_ids[i, j] != pad_token_label_id:
+          #print(out_label_ids[i, j])
+          #print(label_map[out_label_ids[i, j]])
           out_label_list[i].append(label_map[out_label_ids[i][j]])
           preds_list[i].append(label_map[preds[i][j]])
-
+    #exit(0)
     results = {
       "loss": eval_loss,
       "precision": precision_score(out_label_list, preds_list),
@@ -307,6 +324,28 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     for key in sorted(results.keys()):
       logger.info("  %s = %s", key, str(results[key]))
   return results, preds_list
+
+class ConcatDataset(torch.utils.data.Dataset):
+  def __init__(self, max_len, char_vsize, *datasets):
+    self.max_len = max_len
+    self.char_vsize = char_vsize
+    self.datasets = datasets
+
+  def __getitem__(self, idx):
+    cur_item = self.datasets[0][idx]
+    coos = [[], []]
+    vals = []
+    for i, word in enumerate(cur_item):
+        assert len(word[0]) == len(word[1])
+        coos[0].extend([i for _ in range(len(word[0]))])
+        coos[1].extend(word[0])
+        vals.extend(word[1])
+    sent_sparse = torch.sparse_coo_tensor(coos, vals, (self.max_len, self.char_vsize))
+    #sent_sparse = [coos, vals]
+    return [sent_sparse] + [d[idx] for d in self.datasets[1:]]
+
+  def __len__(self):
+    return min(len(d) for d in self.datasets)
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1, few_shot_extra_langs=None, few_shot_extra_langs_size=None):
@@ -338,7 +377,12 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
       data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, "bert-base-multilingual-cased"))
       logger.info("Creating features from dataset file at {} in language {}".format(data_file, lg))
       examples = read_examples_from_file(data_file, lg, lang2id)
-      features_lg = convert_examples_to_features(examples, labels, args.max_seq_length, tokenizer,
+      if args.model_type == "sde-xlm-roberta":
+          logger.info("SDE convert features..")
+          convert = convert_examples_to_sde_features
+      else:
+          convert = convert_examples_to_features
+      features_lg = convert(examples, labels, args.max_seq_length, tokenizer,
                           cls_token_at_end=bool(args.model_type in ["xlnet"]),
                           cls_token=tokenizer.cls_token,
                           cls_token_segment_id=2 if args.model_type in ["xlnet"] else 0,
@@ -367,16 +411,23 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
     logger.info('Using few-shot learning on {} examples'.format(len(features)))
 
   # Convert to Tensors and build dataset
-  all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-  all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
-  all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
-  all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
-  if args.model_type == 'xlm' and features[0].langs is not None:
-    all_langs = torch.tensor([f.langs for f in features], dtype=torch.long)
-    logger.info('all_langs[0] = {}'.format(all_langs[0]))
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_langs)
+  if args.model_type == "sde-xlm-roberta":
+      all_input_ids = [f.input_ids for f in features]
+      all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+      all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+      all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
+      dataset = ConcatDataset(args.max_seq_length, tokenizer.vocab_size, all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
   else:
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+      all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+      all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+      all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+      all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
+      if args.model_type == 'xlm' and features[0].langs is not None:
+        all_langs = torch.tensor([f.langs for f in features], dtype=torch.long)
+        logger.info('all_langs[0] = {}'.format(all_langs[0]))
+        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_langs)
+      else:
+        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
   return dataset
 
 def load_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1, few_shot_extra_langs=None, few_shot_extra_langs_size=None):
@@ -588,16 +639,11 @@ def main():
   # Make sure only the first process in distributed training loads model/vocab
   if args.local_rank not in [-1, 0]:
     torch.distributed.barrier()
-  if args.SDE is not None: 
-      sde_embed = "combine"
-  else:
-      sde_embed = None
 
   config = AutoConfig.from_pretrained(
       args.config_name if args.config_name else args.model_name_or_path,
       num_labels=num_labels,
       cache_dir=args.cache_dir,
-      sde_embed=sde_embed,
   )
   args.model_type = config.model_type
   tokenizer = AutoTokenizer.from_pretrained(
@@ -605,9 +651,12 @@ def main():
       do_lower_case=args.do_lower_case,
       cache_dir=args.cache_dir,
       use_fast=False,
+      #bpe_ngram=config.bpe_ngram,
   )
   if args.SDE == "precalc":
-    sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size)
+    sde_embedding = precalcSDE(tokenizer, dim=config.hidden_size, config=config)
+  elif args.SDE == "full":
+    sde_embedding = SDEFull(tokenizer, dim=config.hidden_size, config=config)
   else:
     sde_embedding = None
 
@@ -729,14 +778,15 @@ def main():
 
   if args.do_predict_train and args.local_rank in [-1, 0]:
     logger.info("Loading the best checkpoint from {}\n".format(best_checkpoint))
-    tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-    model = model_class.from_pretrained(best_checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case, use_fast=False)
+    model = AutoModelForTokenClassification.from_pretrained(best_checkpoint, sde_embedding=sde_embedding)
     model.to(args.device)
 
     output_test_results_file = os.path.join(args.output_dir, "test_results.txt")
     with open(output_test_results_file, "a") as result_writer:
       for lang in args.predict_langs.split(','):
-        if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format(args.model_name_or_path))):
+        #if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format(args.model_name_or_path))):
+        if not os.path.exists(os.path.join(args.data_dir, lang, 'train.{}'.format("bert-base-multilingual-cased"))):
           logger.info("Language {} does not exist".format(lang))
           continue
         result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="train", lang=lang, lang2id=lang2id)
