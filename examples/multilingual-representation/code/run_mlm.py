@@ -45,6 +45,7 @@ from transformers import (
     set_seed,
     XLMRobertaTokenizer,
     SDEXLMRobertaTokenizer,
+    CanineXLMRobertaTokenizer,
     SDEWordFixedTokenizer,
     SDECharNgramTokenizer,
     precalcSDE,
@@ -456,10 +457,14 @@ def main():
         elif model_args.model_type == "sde-xlm-roberta":
             logger.info("SDEXLMRobertaTokenizer")
             tokenizer = SDEXLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
+        elif model_args.model_type == "canine-xlm-roberta":
+            logger.info("CanineXLMRobertaTokenizer")
+            tokenizer = CanineXLMRobertaTokenizer.from_pretrained(model_args.tokenizer_dir, **tokenizer_kwargs)
         else:
             raise ValueError("tokenizer type for {} not supported.".format(model_args.model_type))
     elif model_args.tokenizer_file:
         # using SDE tokenizer
+        # deprecated
         if model_args.SDE == "precalc":
             tokenizer = SDEWordFixedTokenizer(vocab_file=model_args.tokenizer_file)
         elif model_args.SDE == "full":

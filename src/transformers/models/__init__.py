@@ -68,4 +68,5 @@ from . import (
     xlm_roberta,
     xlnet,
     sde_xlm_roberta,
+    canine_xlm_roberta,
 )

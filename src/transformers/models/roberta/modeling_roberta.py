@@ -47,7 +47,7 @@ from ...modeling_utils import (
 )
 from ...utils import logging
 from .configuration_roberta import RobertaConfig
-
+from transformers import CanineEmbedding
 
 logger = logging.get_logger(__name__)
 
@@ -75,7 +75,11 @@ class RobertaEmbeddings(nn.Module):
         super().__init__()
         self.sde_embed = config.sde_embed
         self.sde_combine = (config.sde_embed == "combine")
-        if (not config.sde_embed) or self.sde_combine:
+        self.use_canine = False 
+        if hasattr(config, "canine") and config.canine:
+          self.word_embeddings = CanineEmbedding(config, config.hidden_size)
+          self.use_canine = True
+        elif (not config.sde_embed) or self.sde_combine:
           self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)

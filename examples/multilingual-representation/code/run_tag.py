@@ -732,8 +732,7 @@ def main():
 
     for checkpoint in checkpoints:
       global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-      model = AutoModelForTokenClassification.from_pretrained(checkpoint, sde_embedding=sde_embedding,
-)
+      model = AutoModelForTokenClassification.from_pretrained(checkpoint, sde_embedding=sde_embedding)
       model.to(args.device)
       result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step, lang=args.train_langs, lang2id=lang2id)
       if result["f1"] > best_f1:

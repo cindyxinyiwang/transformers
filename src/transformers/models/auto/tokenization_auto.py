@@ -100,6 +100,7 @@ from .configuration_auto import (
     XLMProphetNetConfig,
     XLMRobertaConfig,
     SDEXLMRobertaConfig,
+    CanineXLMRobertaConfig,
     XLNetConfig,
     replace_list_option_in_docstrings,
 )
@@ -120,6 +121,7 @@ if is_sentencepiece_available():
     from ..xlm_prophetnet.tokenization_xlm_prophetnet import XLMProphetNetTokenizer
     from ..xlm_roberta.tokenization_xlm_roberta import XLMRobertaTokenizer
     from ..sde_xlm_roberta.tokenization_sde_xlm_roberta import SDEXLMRobertaTokenizer
+    from ..canine_xlm_roberta.tokenization_canine_xlm_roberta import CanineXLMRobertaTokenizer
     from ..xlnet.tokenization_xlnet import XLNetTokenizer
 else:
     AlbertTokenizer = None
@@ -198,6 +200,7 @@ else:
     T5TokenizerFast = None
     XLMRobertaTokenizerFast = None
     SDEXLMRobertaTokenizerFast = None
+    CanineXLMRobertaTokenizerFast = None
     XLNetTokenizerFast = None
 
 logger = logging.get_logger(__name__)
@@ -216,6 +219,7 @@ TOKENIZER_MAPPING = OrderedDict(
         (MBartConfig, (MBartTokenizer, MBartTokenizerFast)),
         (XLMRobertaConfig, (XLMRobertaTokenizer, XLMRobertaTokenizerFast)),
         (SDEXLMRobertaConfig, (SDEXLMRobertaTokenizer, None)),
+        (CanineXLMRobertaConfig, (CanineXLMRobertaTokenizer, None)),
         (MarianConfig, (MarianTokenizer, None)),
         (BlenderbotSmallConfig, (BlenderbotSmallTokenizer, None)),
         (BlenderbotConfig, (BlenderbotTokenizer, None)),

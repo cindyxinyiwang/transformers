@@ -57,6 +57,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Base objects, independent of any specific backend
 _import_structure = {
     "sde_embedding": ["precalcSDE", "SDEFull"],
+    "canine_embedding": ["CanineEmbedding"],
     "configuration_utils": ["PretrainedConfig"],
     "data": [
         "DataProcessor",
@@ -205,6 +206,7 @@ _import_structure = {
     "models.xlm_prophetnet": ["XLM_PROPHETNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLMProphetNetConfig"],
     "models.xlm_roberta": ["XLM_ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLMRobertaConfig"],
     "models.sde_xlm_roberta": ["SDEXLMRobertaConfig"],
+    "models.canine_xlm_roberta": ["CanineXLMRobertaConfig"],
     "models.xlnet": ["XLNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "XLNetConfig"],
     "pipelines": [
         "Conversation",
@@ -274,6 +276,7 @@ if is_sentencepiece_available():
     _import_structure["models.xlm_prophetnet"].append("XLMProphetNetTokenizer")
     _import_structure["models.xlm_roberta"].append("XLMRobertaTokenizer")
     _import_structure["models.sde_xlm_roberta"].append("SDEXLMRobertaTokenizer")
+    _import_structure["models.canine_xlm_roberta"].append("CanineXLMRobertaTokenizer")
     _import_structure["models.xlnet"].append("XLNetTokenizer")
 else:
     from .utils import dummy_sentencepiece_objects
@@ -836,6 +839,18 @@ if is_torch_available():
             "SDEXLMRobertaModel",
         ]
     )
+    _import_structure["models.canine_xlm_roberta"].extend(
+        [
+            "CanineXLMRobertaForCausalLM",
+            "CanineXLMRobertaForMaskedLM",
+            "CanineXLMRobertaForMultipleChoice",
+            "CanineXLMRobertaForQuestionAnswering",
+            "CanineXLMRobertaForSequenceClassification",
+            "CanineXLMRobertaForTokenClassification",
+            "CanineXLMRobertaModel",
+        ]
+    )
+
     _import_structure["models.xlnet"].extend(
         [
             "XLNET_PRETRAINED_MODEL_ARCHIVE_LIST",
@@ -1368,6 +1383,7 @@ if TYPE_CHECKING:
     from .models.xlm_prophetnet import XLM_PROPHETNET_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMProphetNetConfig
     from .models.xlm_roberta import XLM_ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, XLMRobertaConfig
     from .models.sde_xlm_roberta import  SDEXLMRobertaConfig
+    from .models.canine_xlm_roberta import  CanineXLMRobertaConfig
     from .models.xlnet import XLNET_PRETRAINED_CONFIG_ARCHIVE_MAP, XLNetConfig
 
     # Pipelines
@@ -1437,6 +1453,7 @@ if TYPE_CHECKING:
         from .models.xlm_prophetnet import XLMProphetNetTokenizer
         from .models.xlm_roberta import XLMRobertaTokenizer
         from .models.sde_xlm_roberta import SDEXLMRobertaTokenizer
+        from .models.canine_xlm_roberta import CanineXLMRobertaTokenizer
         from .models.xlnet import XLNetTokenizer
     else:
         from .utils.dummy_sentencepiece_objects import *
