@@ -46,6 +46,7 @@ from ...modeling_utils import (
     prune_linear_layer,
 )
 from ...utils import logging
+from .configuration_roberta import RobertaConfig
 from transformers import CanineEmbedding
 from .configuration_canine_xlm_roberta import CanineXLMRobertaConfig
 
@@ -580,7 +581,7 @@ ROBERTA_INPUTS_DOCSTRING = r"""
     "The bare RoBERTa Model transformer outputting raw hidden-states without any specific head on top.",
     ROBERTA_START_DOCSTRING,
 )
-class CanineXLMRobertaModel(RobertaPreTrainedModel):
+class RobertaModel(RobertaPreTrainedModel):
     """
 
     The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
@@ -702,7 +703,6 @@ class CanineXLMRobertaModel(RobertaPreTrainedModel):
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
-        attention_mask = self.down_sample_mask(attention_mask)
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
         extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)
@@ -717,7 +717,6 @@ class CanineXLMRobertaModel(RobertaPreTrainedModel):
             encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
-        assert encoder_extended_attention_mask == None
 
         # Prepare head mask if needed
         # 1.0 in head_mask indicate we keep the head
@@ -726,14 +725,13 @@ class CanineXLMRobertaModel(RobertaPreTrainedModel):
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
-        embedding_output, embedding_predown = self.embeddings(
+        embedding_output = self.embeddings(
             input_ids=input_ids,
             position_ids=position_ids,
             token_type_ids=token_type_ids,
             inputs_embeds=inputs_embeds,
             past_key_values_length=past_key_values_length,
         )
-
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
@@ -747,9 +745,6 @@ class CanineXLMRobertaModel(RobertaPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
-        # upsample embedding
-        sequence_output = self.embeddings.forward_up(sequence_output, embedding_predown)
-
         pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         if not return_dict:
@@ -764,14 +759,6 @@ class CanineXLMRobertaModel(RobertaPreTrainedModel):
             cross_attentions=encoder_outputs.cross_attentions,
         )
 
-    def down_sample_mask(self, mask):
-        """
-        Downsample a mask of size [batch_size, len]
-        """
-        down_pooling = torch.nn.MaxPool1d(kernel_size=self.embeddings.down_sample_rate)
-        # batch_size, 1, down_len
-        down_mask = down_pooling(mask.unsqueeze(1).float()).squeeze(1)
-        return down_mask.long()
 
 @add_start_docstrings(
     """RoBERTa Model with a `language modeling` head on top for CLM fine-tuning. """, ROBERTA_START_DOCSTRING
@@ -786,7 +773,7 @@ class CanineXLMRobertaForCausalLM(RobertaPreTrainedModel):
         if not config.is_decoder:
             logger.warning("If you want to use `RobertaLMHeadModel` as a standalone, add `is_decoder=True.`")
 
-        self.roberta = CanineXLMRobertaModel(config, add_pooling_layer=False)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config)
 
         self.init_weights()
@@ -935,7 +922,7 @@ class CanineXLMRobertaForMaskedLM(RobertaPreTrainedModel):
                 "bi-directional self-attention."
             )
 
-        self.roberta = CanineXLMRobertaModel(config, add_pooling_layer=False)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config)
 
         self.init_weights()
@@ -1083,7 +1070,7 @@ class CanineXLMRobertaForSequenceClassification(RobertaPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.roberta = CanineXLMRobertaModel(config, add_pooling_layer=False)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.classifier = RobertaClassificationHead(config)
 
         self.init_weights()
@@ -1165,7 +1152,7 @@ class CanineXLMRobertaForMultipleChoice(RobertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.roberta = CanineXLMRobertaModel(config)
+        self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
@@ -1259,7 +1246,7 @@ class CanineXLMRobertaForTokenClassification(RobertaPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.roberta = CanineXLMRobertaModel(config, add_pooling_layer=False)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1369,7 +1356,7 @@ class CanineXLMRobertaForQuestionAnswering(RobertaPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.roberta = CanineXLMRobertaModel(config, add_pooling_layer=False)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
         self.init_weights()

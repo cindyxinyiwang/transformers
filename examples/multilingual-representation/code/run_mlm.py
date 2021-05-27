@@ -175,6 +175,8 @@ class DataTrainingArguments:
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+    tokenized_cache_file_name: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+    grouped_cache_file_name: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     meta_train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
@@ -314,6 +316,7 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
                 # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
                 # receives the `special_tokens_mask`.
                 return_special_tokens_mask=True,
+                cache_file_name=data_args.tokenized_cache_file_name,
             )
 
         tokenized_datasets = datasets.map(
@@ -322,6 +325,7 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
             num_proc=data_args.preprocessing_num_workers,
             remove_columns=[text_column_name],
             load_from_cache_file=not data_args.overwrite_cache,
+            cache_file_name=data_args.grouped_cache_file_name,
         )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -339,6 +343,7 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
             num_proc=data_args.preprocessing_num_workers,
             remove_columns=column_names,
             load_from_cache_file=not data_args.overwrite_cache,
+            cache_file_name=data_args.tokenized_cache_file_name,
         )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -382,6 +387,7 @@ def create_and_cache_dataset(data_args, training_args, tokenizer):
             batched=True,
             num_proc=data_args.preprocessing_num_workers,
             load_from_cache_file=not data_args.overwrite_cache,
+            cache_file_name=data_args.grouped_cache_file_name,
         )
 
 
@@ -487,6 +493,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "tie_word_embeddings": model_args.tie_word_embeddings,
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -552,6 +559,8 @@ def main():
         logger.info("Reset SDE embed")
         #model.roberta.embeddings.sde_embeddings = sde_embedding
         model.roberta.set_input_embeddings(sde_embedding)
+    elif "canine" in model_args.model_type:
+        pass
     else:
         model.resize_token_embeddings(len(tokenizer))
 

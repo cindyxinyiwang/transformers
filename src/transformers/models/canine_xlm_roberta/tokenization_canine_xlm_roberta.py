@@ -131,9 +131,9 @@ class CanineXLMRobertaTokenizer(PreTrainedTokenizer):
             **kwargs,
         )
 
-        #self.sp_model = spm.SentencePieceProcessor()
-        #self.sp_model.Load(str(vocab_file))
-        #self.vocab_file = vocab_file
+        self.sp_model = spm.SentencePieceProcessor()
+        self.sp_model.Load(str(vocab_file))
+        self.vocab_file = vocab_file
 
         # Original fairseq vocab and spm vocab must be "aligned":
         # Vocab    |    0    |    1    |   2    |    3    |  4  |  5  |  6  |   7   |   8   |  9
@@ -242,7 +242,7 @@ class CanineXLMRobertaTokenizer(PreTrainedTokenizer):
 
     @property
     def vocab_size(self):
-        return 14000
+        return len(self.sp_model) + self.fairseq_offset + 1  # Add the <mask> token
 
     def get_vocab(self):
         vocab = {self.convert_ids_to_tokens(i): i for i in range(self.vocab_size)}
